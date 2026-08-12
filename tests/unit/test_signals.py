@@ -35,15 +35,19 @@ def forced_exits(monkeypatch: pytest.MonkeyPatch) -> list[int]:
 
 
 @pytest.fixture
-def captured_handlers(monkeypatch: pytest.MonkeyPatch) -> dict[int, Any]:
-    """Capture the handlers the installer registers, on either platform."""
+async def captured_handlers(monkeypatch: pytest.MonkeyPatch) -> dict[int, Any]:
+    """Capture the handlers the installer registers, on either platform.
+
+    Async on purpose: the POSIX branch patches the *running* loop, which only
+    exists inside the test's own loop.
+    """
     registered: dict[int, Any] = {}
 
     if IS_WINDOWS:
         monkeypatch.setattr(signal, "getsignal", lambda sig: signal.SIG_DFL)
         monkeypatch.setattr(signal, "signal", lambda sig, handler: registered.setdefault(int(sig), handler))
     else:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         monkeypatch.setattr(
             loop,
             "add_signal_handler",
