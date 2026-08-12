@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  lint:
+    name: Lint & type check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --group dev --extra all
+      - run: uv run ruff check
+      - run: uv run ruff format --check
+      - run: uv run mypy
+      - run: uv run lint-imports
+
+  test-unit:
+    name: Unit tests (Python ${{ matrix.python-version }})
+    needs: lint
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --group dev --extra all
+      - run: uv run pytest -m unit --cov=servicewright --cov-report=xml --cov-fail-under=90
+      - uses: codecov/codecov-action@v7
+        if: matrix.python-version == '3.12'
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.xml
+        continue-on-error: true
+
+  # APScheduler 3.x and 4.x are the same distribution with incompatible majors,
+  # so the v3 adapter can only be exercised in an environment of its own. The
+  # main matrix installs [all] (which carries v4) and skips these; here it is
+  # the other way round.
+  test-apscheduler3:
+    name: Unit tests (APScheduler 3.x)
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --group test --extra apscheduler3
+      - run: uv run pytest tests/unit/test_scheduler_aps3.py tests/unit/test_scheduler_conformance.py
+
+  test-integration:
+    name: Integration tests
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --group dev --extra all
+      - name: Run integration tests
+        run: |
+          set +e
+          uv run pytest -m integration
+          STATUS=$?
+          set -e
+          test $STATUS -eq 0 -o $STATUS -eq 5
+
+  # Sentinel job — use this as the single required status check in branch protection.
+  all-checks-passed:
+    name: All checks passed
+    if: always()
+    needs: [lint, test-unit, test-apscheduler3, test-integration]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check all jobs succeeded
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "One or more required checks failed."
+            exit 1
+          fi
+          echo "All checks passed."

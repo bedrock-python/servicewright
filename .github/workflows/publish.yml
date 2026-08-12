@@ -1,0 +1,75 @@
+name: Publish
+
+on:
+  workflow_run:
+    workflows: ["Release Please"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (e.g. servicewright-v0.1.0 or v0.1.0)"
+        required: true
+
+permissions:
+  contents: read
+  id-token: write   # Trusted Publisher (PyPI OIDC)
+
+jobs:
+  check:
+    name: Check release tag
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'master')
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event.workflow_run.head_sha }}
+          fetch-tags: true
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            # Accept both tag conventions: the component-prefixed one and the
+            # bare one, so a Release Please config change cannot silently stop
+            # publishing.
+            TAG=$(git tag --points-at HEAD | grep -E '^(servicewright-)?v[0-9]' | head -1)
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            if [ -z "$TAG" ]; then
+              echo "No release tag on this commit — skipping publish."
+            else
+              echo "Will publish $TAG"
+            fi
+          fi
+
+  publish:
+    name: Build and publish to PyPI
+    needs: check
+    if: needs.check.outputs.tag != ''
+    runs-on: ubuntu-latest
+    environment: pypi
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.check.outputs.tag }}
+
+      - uses: astral-sh/setup-uv@v7
+
+      # Release Please already committed this version into pyproject.toml; the
+      # rewrite is a safety net so a tag can never publish a stale version.
+      - name: Set version from release tag
+        run: |
+          VERSION="${{ needs.check.outputs.tag }}"
+          VERSION="${VERSION#servicewright-}"
+          VERSION="${VERSION#v}"
+          sed -i "0,/^version = .*/s//version = \"$VERSION\"/" pyproject.toml
+          grep -m1 '^version = ' pyproject.toml
+
+      - run: uv build
+      - run: uv publish
