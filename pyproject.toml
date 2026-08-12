@@ -33,7 +33,7 @@ observability = [
     # meta-package additionally pulls the HTTP exporter (and requests) into
     # every install, and the tracing sink only ever imports the gRPC one.
     "opentelemetry-exporter-otlp-proto-grpc>=1.39.1",
-    "structlog>=25.5.0,<26.0.0",
+    "structlog>=25.5.0,<27.0.0",
 ]
 # Request tracing for the FastAPI entrypoint (the instrumentor is imported
 # lazily, so it stays optional rather than weighing down [observability]).
@@ -60,7 +60,7 @@ fastapi = [
     "fastapi>=0.115.0,<1.0.0",
     "uvicorn[standard]>=0.34.0,<1.0.0",
     "deadline-budget>=0.1.0,<1.0.0",
-    "prometheus-fastapi-instrumentator>=7.0.0,<8.0.0",
+    "prometheus-fastapi-instrumentator>=7.0.0,<9.0.0",
 ]
 grpc = [
     "grpc-server-kit[reflection,channelz,health]>=0.1.0,<0.2",
@@ -96,7 +96,7 @@ test = [
     "opentelemetry-sdk>=1.39.1",
     "opentelemetry-exporter-otlp>=1.39.1",
     "opentelemetry-instrumentation-fastapi>=0.60b1",
-    "structlog>=25.5.0,<26.0.0",
+    "structlog>=25.5.0,<27.0.0",
     "httpx>=0.27.0,<1.0.0",
     "redis>=4.2.0",
     "sqlalchemy[asyncio]>=2.0.0,<3.0.0",
