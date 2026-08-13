@@ -164,7 +164,7 @@ Full documentation: **[bedrock-python.github.io/servicewright](https://bedrock-p
 | [Writing an entrypoint](https://bedrock-python.github.io/servicewright/guides/custom-entrypoint/) | four methods, worked end to end |
 | [Kubernetes](https://bedrock-python.github.io/servicewright/operations/kubernetes/) | probes, grace periods, exit codes |
 | [Runbooks](https://bedrock-python.github.io/servicewright/operations/runbooks/) | symptom → cause → fix |
-| [API reference](https://bedrock-python.github.io/servicewright/reference/) | generated from the source |
+| [API reference](https://bedrock-python.github.io/servicewright/reference/servicewright/) | generated from the source |
 
 The design source-of-truth lives in [ARCHITECTURE.md](ARCHITECTURE.md).
 
