@@ -11,15 +11,56 @@ site_dir = "site"
 
 nav = [
     { "Home" = "index.md" },
-    { "Guide" = [
-        { "Quick start" = "guide/quickstart.md" },
-        { "Configuration" = "guide/configuration.md" },
-        { "Lifecycle" = "guide/lifecycle.md" },
-        { "Errors" = "guide/errors.md" },
-        { "Observability" = "guide/observability.md" },
-        { "Advanced" = "guide/advanced.md" },
+    { "Getting started" = [
+        { "Installation" = "getting-started/installation.md" },
+        { "Your first service" = "getting-started/first-service.md" },
+        { "Tutorial" = "getting-started/tutorial.md" },
     ] },
-    { "API Reference" = "reference/index.md" },
+    { "Concepts" = [
+        { "Architecture" = "concepts/architecture.md" },
+        { "Lifecycle" = "concepts/lifecycle.md" },
+        { "Entrypoints" = "concepts/entrypoints.md" },
+        { "Dependency injection" = "concepts/dependency-injection.md" },
+        { "Settings" = "concepts/settings.md" },
+        { "Errors" = "concepts/errors.md" },
+        { "Request context" = "concepts/context.md" },
+        { "Health checks" = "concepts/health.md" },
+        { "Warmup" = "concepts/warmup.md" },
+        { "Observability" = "concepts/observability.md" },
+        { "Plugins" = "concepts/plugins.md" },
+    ] },
+    { "Adapters" = [
+        { "Overview" = "adapters/overview.md" },
+        { "FastAPI" = "adapters/fastapi.md" },
+        { "Litestar" = "adapters/litestar.md" },
+        { "gRPC" = "adapters/grpc.md" },
+        { "Scheduler" = "adapters/scheduler.md" },
+        { "Daemon and one-shot" = "adapters/daemon-and-oneshot.md" },
+        { "dishka" = "adapters/dishka.md" },
+        { "Observability backends" = "adapters/observability-backends.md" },
+        { "Infrastructure" = "adapters/infrastructure.md" },
+    ] },
+    { "Blueprints" = [
+        { "Project layout" = "blueprints/project-layout.md" },
+        { "HTTP API service" = "blueprints/http-api.md" },
+        { "gRPC service" = "blueprints/grpc-service.md" },
+        { "Background worker" = "blueprints/worker.md" },
+        { "Batch job" = "blueprints/batch-job.md" },
+    ] },
+    { "Guides" = [
+        { "Writing an entrypoint" = "guides/custom-entrypoint.md" },
+        { "Testing" = "guides/testing.md" },
+    ] },
+    { "Operations" = [
+        { "Kubernetes" = "operations/kubernetes.md" },
+        { "Production checklist" = "operations/checklist.md" },
+        { "Runbooks" = "operations/runbooks.md" },
+    ] },
+    { "API Reference" = [
+        { "servicewright" = "reference/servicewright.md" },
+        { "Adapters" = "reference/adapters.md" },
+        { "Testing" = "reference/testing.md" },
+    ] },
     { "Changelog" = "changelog.md" },
 ]
 

@@ -151,8 +151,22 @@ Runnable, self-contained scripts (each exits 0):
 
 ## Documentation
 
-Full documentation at [bedrock-python.github.io/servicewright](https://bedrock-python.github.io/servicewright/).
-The reference architecture lives in [ARCHITECTURE.md](ARCHITECTURE.md).
+Full documentation: **[bedrock-python.github.io/servicewright](https://bedrock-python.github.io/servicewright/)**
+
+| | |
+| --- | --- |
+| [Your first service](https://bedrock-python.github.io/servicewright/getting-started/first-service/) | a complete service with nothing installed but the kernel |
+| [Tutorial](https://bedrock-python.github.io/servicewright/getting-started/tutorial/) | an HTTP API and a cron job in one process |
+| [Architecture](https://bedrock-python.github.io/servicewright/concepts/architecture/) | the six nouns, the two layers, the dependency rule |
+| [Lifecycle](https://bedrock-python.github.io/servicewright/concepts/lifecycle/) | phase order, budgets, signals, exit codes |
+| [Adapters](https://bedrock-python.github.io/servicewright/adapters/overview/) | FastAPI, Litestar, gRPC, scheduler, dishka, observability backends |
+| [Blueprints](https://bedrock-python.github.io/servicewright/blueprints/project-layout/) | copy-paste skeletons: project layout, HTTP API, gRPC, worker, batch job |
+| [Writing an entrypoint](https://bedrock-python.github.io/servicewright/guides/custom-entrypoint/) | four methods, worked end to end |
+| [Kubernetes](https://bedrock-python.github.io/servicewright/operations/kubernetes/) | probes, grace periods, exit codes |
+| [Runbooks](https://bedrock-python.github.io/servicewright/operations/runbooks/) | symptom → cause → fix |
+| [API reference](https://bedrock-python.github.io/servicewright/reference/) | generated from the source |
+
+The design source-of-truth lives in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## License
 
