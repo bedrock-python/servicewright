@@ -30,6 +30,11 @@ class ObsSetupContext:
     Observability config must be reachable from ``settings`` (DSN, collector URL,
     tokens): ``setup()`` runs in Bootstrap, *before* the DI container exists, so
     container-resolved secrets are unavailable at sink setup time.
+
+    ``redactor`` arrives already resolved for the receiving sink's surface: the
+    manager applies its per-surface overrides (``log_redactor`` /
+    ``error_redactor`` / ``trace_redactor``) before handing the context over,
+    so a sink never has to know which override chain produced it.
     """
 
     service_name: str

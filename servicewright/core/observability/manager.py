@@ -20,6 +20,7 @@ Degradation rule (uniform):
 
 from __future__ import annotations
 
+from dataclasses import replace
 from logging import getLogger
 from typing import TYPE_CHECKING, Any
 
@@ -52,8 +53,18 @@ class ObservabilityManager:
         config: App-wide backend selection by name. ``None`` selects nothing
             (concerns without an instance stay NullObject) — the default for a
             bare ``AppSpec``.
-        redactor: Cross-cutting sensitive-data filter threaded into BOTH the
-            logging and error-tracking sinks.
+        redactor: Cross-cutting sensitive-data filter threaded into the
+            logging, error-tracking and tracing sinks (every payload surface;
+            metrics carry no payloads and are exempt).
+        log_redactor: Per-surface override for the logging sink; wins over
+            ``redactor`` there. Surfaces differ in volume by orders of
+            magnitude — this is how a cheap masker goes on every log line
+            while an expensive one guards only the error path.
+        error_redactor: Per-surface override for the error-tracking sink.
+            The natural home for ML-grade maskers: events are rare, shipped
+            off the request path, and leak the most (stack-frame locals,
+            request bodies).
+        trace_redactor: Per-surface override for span attributes.
         metrics: Ready metrics sink instance (wins over ``config.metrics``).
         tracing: Ready tracing sink instance (wins over ``config.tracing``).
         error_tracking: Ready error-tracking sink instance (wins over
@@ -66,6 +77,9 @@ class ObservabilityManager:
         config: ObsConfig | None = None,
         *,
         redactor: Redactor | None = None,
+        log_redactor: Redactor | None = None,
+        error_redactor: Redactor | None = None,
+        trace_redactor: Redactor | None = None,
         metrics: MetricsSinkProtocol | None = None,
         tracing: TracingSinkProtocol | None = None,
         error_tracking: ErrorTrackingSinkProtocol | None = None,
@@ -73,6 +87,11 @@ class ObservabilityManager:
     ) -> None:
         self._config = config
         self._redactor = redactor
+        self._surface_redactors: dict[str, Redactor | None] = {
+            "logging": log_redactor,
+            "error_tracking": error_redactor,
+            "tracing": trace_redactor,
+        }
         self._configured = False
         # (concern, sink) pairs in setup order; sinks are registry-resolved and
         # therefore dynamically typed at this boundary.
@@ -143,7 +162,10 @@ class ObservabilityManager:
                 if backend is None or not gates[concern](settings):
                     continue
                 sink = resolve_sink(concern, backend)()
-            sink.setup(ctx)
+            # Each sink sees the redactor resolved for its own surface: the
+            # per-surface override, else the cross-cutting one. Metrics carry
+            # no payloads, so their ctx never advertises a redactor.
+            sink.setup(replace(ctx, redactor=self._redactor_for(concern)))
             self._active.append((concern, sink))
             setattr(self, f"_{concern}", sink)
             logger.info(
@@ -176,6 +198,12 @@ class ObservabilityManager:
         self._error_tracking = NullErrorTrackingSink()
         self._logging = NullLoggingSink()
         self._configured = False
+
+    def _redactor_for(self, concern: str) -> Redactor | None:
+        if concern == "metrics":
+            return None
+        override = self._surface_redactors.get(concern)
+        return override if override is not None else self._redactor
 
     def _build_setup_context(self, settings: BaseServiceSettingsProtocol, service_name: str) -> ObsSetupContext:
         environment = getattr(settings, "environment", None)

@@ -478,3 +478,75 @@ def test__prometheus_sink__name_reused_for_another_instrument_type__raises(
     # Act & Assert
     with pytest.raises(TypeError, match="already registered"):
         sink.histogram("clashing_name_total", "A histogram")
+
+
+# --------------------------------------------------------------------------- #
+# OpenTelemetry span-attribute redaction
+# --------------------------------------------------------------------------- #
+def _provider_with_memory_exporter(monkeypatch: pytest.MonkeyPatch, redactor: Any) -> tuple[Any, Any]:
+    """Set the otel sink up with a redactor and attach an in-memory exporter AFTER it."""
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    installed: list[Any] = []
+    monkeypatch.setattr(otel_mod.trace, "set_tracer_provider", installed.append)
+    sink = OtelTracingSink()
+    otel_settings = _OtelSettings()
+    otel_settings.sample_ratio = 1.0  # the shared double samples 50% - deterministic here
+    sink.setup(_ctx(_settings_with(tracing=otel_settings), redactor=redactor))
+    provider = installed[0]
+    exporter = InMemorySpanExporter()
+    # Registered after the redacting processor: on_end runs in registration
+    # order, so this exporter sees exactly what a real OTLP exporter would.
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    return provider, exporter
+
+
+def test__otel_sink__redactor_in_ctx__span_attributes_are_redacted_before_export(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider, exporter = _provider_with_memory_exporter(monkeypatch, KeyRedactor())
+
+    tracer = provider.get_tracer("test")
+    with tracer.start_as_current_span("op") as span:
+        span.set_attribute("password", "hunter2")
+        span.set_attribute("http.route", "/orders")
+
+    (exported,) = exporter.get_finished_spans()
+    assert exported.attributes["password"] == "[REDACTED]"
+    assert exported.attributes["http.route"] == "/orders"
+
+
+def test__otel_sink__redactor_raises__span_keeps_timing_but_loses_all_attributes(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    def broken(data: dict[str, Any]) -> dict[str, Any]:
+        raise RuntimeError("scrubber down")
+
+    provider, exporter = _provider_with_memory_exporter(monkeypatch, broken)
+
+    tracer = provider.get_tracer("test")
+    with caplog.at_level(logging.WARNING):
+        with tracer.start_as_current_span("op") as span:
+            span.set_attribute("password", "hunter2")
+        with tracer.start_as_current_span("op2") as span:
+            span.set_attribute("password", "hunter2")
+
+    spans = exporter.get_finished_spans()
+    assert len(spans) == 2
+    # Fail closed: a failing scrubber must never publish what it was meant to scrub.
+    assert all(dict(exported.attributes or {}) == {} for exported in spans)
+    assert all(exported.end_time is not None for exported in spans)
+    warnings = [record for record in caplog.records if "trace redactor raised" in record.message]
+    assert len(warnings) == 1  # once per processor, not per span
+
+
+def test__otel_sink__no_redactor__spans_pass_through_untouched(monkeypatch: pytest.MonkeyPatch) -> None:
+    provider, exporter = _provider_with_memory_exporter(monkeypatch, None)
+
+    tracer = provider.get_tracer("test")
+    with tracer.start_as_current_span("op") as span:
+        span.set_attribute("password", "hunter2")
+
+    (exported,) = exporter.get_finished_spans()
+    assert exported.attributes["password"] == "hunter2"

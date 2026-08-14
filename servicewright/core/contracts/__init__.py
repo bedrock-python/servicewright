@@ -18,6 +18,7 @@ from .lifecycle import LifecycleHookProtocol as LifecycleHookProtocol
 from .observability import CounterProtocol as CounterProtocol
 from .observability import ErrorReporterProtocol as ErrorReporterProtocol
 from .observability import HistogramProtocol as HistogramProtocol
+from .observability import Masker as Masker
 from .observability import Redactor as Redactor
 from .observability import SpanProtocol as SpanProtocol
 from .observability import TracerProtocol as TracerProtocol
@@ -36,6 +37,7 @@ __all__ = [
     "HealthCheckerProtocol",
     "HistogramProtocol",
     "LifecycleHookProtocol",
+    "Masker",
     "Plugin",
     "Redactor",
     "ScopedEntrypoint",

@@ -49,6 +49,7 @@ from .exceptions import (
 from .health import HealthRegistry, HealthReport, ProbeStatus
 from .lifecycle import Lifecycle
 from .observability import (
+    ChainRedactor,
     ErrorTrackingSettingsProtocol,
     KeyRedactor,
     LoggingSettingsProtocol,
@@ -57,6 +58,7 @@ from .observability import (
     ObservabilityManager,
     ObsSetupContext,
     TracingSettingsProtocol,
+    ValueRedactor,
     register_sink,
 )
 from .service import Service, run
@@ -73,6 +75,7 @@ __all__ = [
     "AsyncWarmer",
     "BaseServiceSettingsProtocol",
     "BootstrapContext",
+    "ChainRedactor",
     "CleanupTimeoutError",
     "ContextSetter",
     "DependencyContainerProtocol",
@@ -105,6 +108,7 @@ __all__ = [
     "ServiceWrightError",
     "TracingSettingsProtocol",
     "UnitScopeProtocol",
+    "ValueRedactor",
     "WarmupError",
     "WarmupTimeoutError",
     "bind_context",

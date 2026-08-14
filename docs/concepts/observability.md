@@ -144,8 +144,11 @@ into the [context store](context.md) and push them into structlog contextvars an
 
 ## Redaction
 
-`KeyRedactor` masks values whose key contains a sensitive fragment, and it is threaded into
-**both** the logging and error-tracking sinks:
+The cross-cutting `redactor` is threaded into every payload surface — logging, error tracking
+**and** span attributes (metrics carry no payloads and are exempt). For spans it runs as the first
+span processor, so no exporter ever sees an unredacted attribute.
+
+`KeyRedactor` masks values whose key contains a sensitive fragment:
 
 ```python
 KeyRedactor(sensitive_keys={"password", "api_key", "ssn"}, mask="[REDACTED]")
@@ -158,6 +161,60 @@ sounds: a Sentry event keeps stack-frame locals under
 block and ship your credentials in the frame locals.
 
 Any callable `dict -> dict` works in its place.
+
+### Masking by value
+
+Key-based redaction has a structural blind spot: the email inside a free-form log message, the
+card number a user pasted into a comment field. No name list can reach those — something has to
+look at the *value*. That is the `Masker` seam: any `(str) -> str` callable, lifted over whole
+payloads by `ValueRedactor` and composed with the key redactor by `ChainRedactor`:
+
+```python
+import re
+
+from servicewright import ChainRedactor, KeyRedactor, ObservabilityManager, ValueRedactor
+
+EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
+
+observability = ObservabilityManager(
+    ObsConfig(),
+    redactor=ChainRedactor(KeyRedactor(), ValueRedactor(lambda v: EMAIL.sub("<email>", v))),
+)
+```
+
+Key-first is the conventional order: sensitive fields are already collapsed to the mask before
+the (potentially more expensive) value masker sees the payload.
+
+`ValueRedactor` fails closed: a masker that raises turns the value into the mask — never the raw
+string — and logs one warning per redactor, so a broken masker is visible without a log storm and
+without dropping a single log line or event.
+
+### One redactor per surface
+
+Surfaces differ in volume by orders of magnitude, so one redactor rarely fits all three. The
+per-surface overrides — `log_redactor`, `error_redactor`, `trace_redactor` — each win over the
+cross-cutting `redactor` on their surface:
+
+```python
+observability = ObservabilityManager(
+    ObsConfig(),
+    redactor=KeyRedactor(),                      # every surface: cheap, name-based
+    error_redactor=ChainRedactor(                # error path only: add the ML masker
+        KeyRedactor(),
+        ValueRedactor(presidio_masker),
+    ),
+)
+```
+
+This split is the whole point: the error path is where payloads leak the most (stack-frame
+locals, request bodies) *and* where volume is lowest — events are rare and shipped off the
+request path. An ML-grade masker (Presidio, GLiNER, DataFog) belongs there. Putting the same
+model on every log line of a busy service would cost milliseconds per line; keep the logging
+surface on regex-cheap maskers.
+
+One caveat for model-backed maskers: they load hundreds of megabytes and take seconds to
+initialize. Build the engine once at process start — [warmup](warmup.md) exists precisely so that
+cost lands before readiness, not on the first request that logs an error.
 
 ## Lifecycle
 

@@ -1,13 +1,24 @@
-"""Built-in sensitive-data redactor (pure stdlib).
+"""Built-in sensitive-data redactors (pure stdlib).
 
-A minimal :class:`~servicewright.core.contracts.observability.Redactor`
-implementation the manager threads into BOTH the logging and error-tracking
-sinks. Any callable ``dict -> dict`` works in its place.
+:class:`~servicewright.core.contracts.observability.Redactor` implementations
+the manager threads into the logging, error-tracking and tracing sinks. Any
+callable ``dict -> dict`` works in their place.
+
+- :class:`KeyRedactor` masks by field *name* (``password``, ``token``, ...).
+- :class:`ValueRedactor` lifts a :class:`~servicewright.core.contracts.observability.Masker`
+  over every string *value* - PII that no name list can catch.
+- :class:`ChainRedactor` composes redactors so the two run together.
 """
 
 from __future__ import annotations
 
-from typing import Any
+import logging
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from ..contracts.observability import Masker, Redactor
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_SENSITIVE_KEYS = frozenset(
     {
@@ -76,4 +87,71 @@ class KeyRedactor:
         return any(fragment in lowered for fragment in self._sensitive_keys)
 
 
-__all__ = ["DEFAULT_SENSITIVE_KEYS", "MASK", "KeyRedactor"]
+class ValueRedactor:
+    """Lifts a value-level :class:`Masker` over every string value in a payload.
+
+    Same traversal as :class:`KeyRedactor` - nested dicts, lists and tuples,
+    cycle-safe - but the decision is made by the masker looking at each string
+    *value*, not by the field name. Keys are never masked.
+
+    Fail closed: if the masker raises on a value, that value becomes the mask
+    (never the raw string), and one warning is logged per redactor instance -
+    a broken masker is visible without a log storm and without dropping a
+    single log line or event.
+    """
+
+    def __init__(self, masker: Masker, mask: str = MASK) -> None:
+        self._masker = masker
+        self._mask = mask
+        self._warned = False
+
+    def __call__(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Return a copy of ``data`` with every string value passed through the masker."""
+        return self._redact_mapping(data, frozenset())
+
+    def _redact_mapping(self, data: dict[str, Any], seen: frozenset[int]) -> dict[str, Any]:
+        seen = seen | {id(data)}
+        return {key: self._redact_value(value, seen) for key, value in data.items()}
+
+    def _redact_value(self, value: Any, seen: frozenset[int]) -> Any:
+        if isinstance(value, str):
+            return self._mask_one(value)
+        if id(value) in seen:
+            return value
+        if isinstance(value, dict):
+            return self._redact_mapping(value, seen)
+        if isinstance(value, list):
+            return [self._redact_value(item, seen | {id(value)}) for item in value]
+        if isinstance(value, tuple):
+            return tuple(self._redact_value(item, seen | {id(value)}) for item in value)
+        return value
+
+    def _mask_one(self, value: str) -> str:
+        try:
+            return self._masker(value)
+        except Exception:
+            if not self._warned:
+                self._warned = True
+                logger.warning("value masker raised; emitting the mask instead of the value", exc_info=True)
+            return self._mask
+
+
+class ChainRedactor:
+    """Applies redactors left to right: ``ChainRedactor(KeyRedactor(), ValueRedactor(m))``.
+
+    Order matters and the conventional order is key-based first: sensitive
+    fields are already collapsed to the mask before the (potentially more
+    expensive) value masker sees the payload.
+    """
+
+    def __init__(self, *redactors: Redactor) -> None:
+        self._redactors = redactors
+
+    def __call__(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Return ``data`` passed through every redactor in order."""
+        for redactor in self._redactors:
+            data = redactor(data)
+        return data
+
+
+__all__ = ["DEFAULT_SENSITIVE_KEYS", "MASK", "ChainRedactor", "KeyRedactor", "ValueRedactor"]

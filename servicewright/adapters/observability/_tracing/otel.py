@@ -17,17 +17,60 @@ try:
     from opentelemetry import trace
     from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
     from opentelemetry.sdk.resources import Resource
-    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
     from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter, SimpleSpanProcessor
     from opentelemetry.sdk.trace.sampling import ParentBased, TraceIdRatioBased
 except ImportError as exc:  # pragma: no cover - exercised only without the extra
     raise ImportError("OpenTelemetry tracing requires servicewright[observability]; install it.") from exc
 
 if TYPE_CHECKING:
-    from ....core.contracts.observability import TracerProtocol
+    from opentelemetry.sdk.trace import ReadableSpan, Span
+
+    from ....core.contracts.observability import Redactor, TracerProtocol
     from ....core.observability.config import ObsSetupContext
 
 logger = logging.getLogger(__name__)
+
+
+class _RedactingSpanProcessor(SpanProcessor):
+    """Rewrites span attributes through the redactor before any exporter sees them.
+
+    Registered FIRST, ahead of the exporting processors: ``on_end`` runs in
+    registration order, and the batch exporter enqueues the same span object,
+    so mutating attributes here is what the exporter later serializes. The SDK
+    offers no public post-end attribute hook — rewriting ``_attributes`` is the
+    established scrubbing pattern for OTel Python.
+
+    Fail closed: if the redactor raises, the span keeps its name and timing but
+    loses ALL attributes — a failing scrubber must never publish what it was
+    supposed to scrub. One warning per processor, not per span.
+    """
+
+    def __init__(self, redactor: Redactor) -> None:
+        self._redactor = redactor
+        self._warned = False
+
+    def on_end(self, span: ReadableSpan) -> None:
+        attributes = span._attributes
+        if not attributes:
+            return
+        try:
+            span._attributes = self._redactor(dict(attributes))
+        except Exception:
+            span._attributes = {}
+            if not self._warned:
+                self._warned = True
+                logger.warning("trace redactor raised; dropping span attributes", exc_info=True)
+
+    def on_start(self, span: Span, parent_context: object = None) -> None:
+        """Nothing to do at span start; redaction happens once, at the end."""
+
+    def shutdown(self) -> None:
+        """Stateless processor; nothing to flush."""
+
+    def force_flush(self, timeout_millis: int = 30000) -> bool:
+        """Stateless processor; always already flushed."""
+        return True
 
 
 class OtelTracingSink(TracingSink):
@@ -54,6 +97,11 @@ class OtelTracingSink(TracingSink):
         )
         sampler = ParentBased(TraceIdRatioBased(getattr(otel_settings, "sample_ratio", 1.0)))
         provider = TracerProvider(resource=resource, sampler=sampler)
+
+        # Must be registered before any exporting processor: on_end runs in
+        # registration order, and exporters must only ever see redacted spans.
+        if ctx.redactor is not None:
+            provider.add_span_processor(_RedactingSpanProcessor(ctx.redactor))
 
         collector_url = getattr(otel_settings, "collector_url", None)
         if collector_url:

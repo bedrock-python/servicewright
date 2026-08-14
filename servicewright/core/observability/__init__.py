@@ -26,7 +26,7 @@ from .protocols import (
     MetricsSettingsProtocol,
     TracingSettingsProtocol,
 )
-from .redaction import DEFAULT_SENSITIVE_KEYS, KeyRedactor
+from .redaction import DEFAULT_SENSITIVE_KEYS, MASK, ChainRedactor, KeyRedactor, ValueRedactor
 from .registry import register_sink, resolve_sink
 from .sinks import (
     ErrorTrackingSinkProtocol,
@@ -37,6 +37,8 @@ from .sinks import (
 
 __all__ = [
     "DEFAULT_SENSITIVE_KEYS",
+    "MASK",
+    "ChainRedactor",
     "ErrorTrackingSettingsProtocol",
     "ErrorTrackingSinkProtocol",
     "KeyRedactor",
@@ -59,6 +61,7 @@ __all__ = [
     "ObservabilityManager",
     "TracingSettingsProtocol",
     "TracingSinkProtocol",
+    "ValueRedactor",
     "make_metric_name",
     "register_sink",
     "resolve_sink",

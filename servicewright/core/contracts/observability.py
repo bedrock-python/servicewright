@@ -99,10 +99,31 @@ class ErrorReporterProtocol(Protocol):
 
 
 class Redactor(Protocol):
-    """Cross-cutting sensitive-data filter shared by logging and error tracking."""
+    """Cross-cutting sensitive-data filter threaded into logging, error tracking and tracing."""
 
     def __call__(self, data: dict[str, Any]) -> dict[str, Any]:
         """Return a redacted copy of ``data``."""
+        ...
+
+
+class Masker(Protocol):
+    """Value-level masker for a single string (the PII scrubbing seam).
+
+    Where a :class:`Redactor` decides by *key* ("this field is named password"),
+    a masker looks at the *value* itself - the email inside a free-form message,
+    the card number in a path. Any ``(str) -> str`` callable qualifies: a regex
+    substitution, a format-preserving masker, a locally hosted NER model. Lift
+    one over whole payloads with
+    :class:`~servicewright.core.observability.redaction.ValueRedactor`.
+
+    Contract: synchronous; runs once per string value on the surface it is
+    attached to. Pick the surface to match the cost - a regex masker is fine on
+    every log line, an ML model belongs on the error path, where volume is
+    lowest and payloads leak the most.
+    """
+
+    def __call__(self, value: str) -> str:
+        """Return the masked form of ``value``."""
         ...
 
 
@@ -110,6 +131,7 @@ __all__ = [
     "CounterProtocol",
     "ErrorReporterProtocol",
     "HistogramProtocol",
+    "Masker",
     "Redactor",
     "SpanAttributeValue",
     "SpanProtocol",
