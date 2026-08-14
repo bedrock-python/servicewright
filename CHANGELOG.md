@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.1.0...servicewright-v0.2.0) (2026-08-14)
+
+
+### Features
+
+* add Masker seam with ValueRedactor, ChainRedactor, per-surface redactors and span-attribute redaction ([47e40e8](https://github.com/bedrock-python/servicewright/commit/47e40e8699ce64cc2565589e9cf82d55efad065b))
+
+
+### Documentation
+
+* point the README API reference link at its new url ([08748d5](https://github.com/bedrock-python/servicewright/commit/08748d55b607ce6adfc98458fc33a55755cde576))
+* rewrite the documentation site with concepts, adapters, blueprints and runbooks ([db5508c](https://github.com/bedrock-python/servicewright/commit/db5508c467fa2858efde0210d7169ddb57075589))
+
 ## 0.1.0 (2026-08-12)
 
 Initial release of servicewright.
