@@ -2,8 +2,10 @@
 
 Both ``structlog``-native loggers and plain ``logging`` records render through
 one processor chain (``ProcessorFormatter``), so third-party library logs come
-out in the same format. The cross-cutting redactor runs as a processor on every
-event dict.
+out in the same format — payload included: ``ExtraAdder`` merges a stdlib
+record's ``extra`` into the event dict, which is where servicewright's own log
+lines keep their fields. The cross-cutting redactor runs as a processor on every
+event dict, after that merge.
 """
 
 from __future__ import annotations
@@ -45,7 +47,14 @@ class StructlogLoggingSink(LoggingSink):
             structlog.stdlib.add_logger_name,
             structlog.stdlib.add_log_level,
             structlog.processors.TimeStamper(fmt="iso", utc=True),
+            # A foreign record carries its payload in ``record.__dict__``, and structlog merges it
+            # only when asked to. Without this the library's own lines lose every field they carry
+            # — the FastAPI access log's method/path/status, a failing warmer's name — since those
+            # are all emitted as ``logger.info(..., extra={...})``.
+            structlog.stdlib.ExtraAdder(),
         ]
+        # After ExtraAdder on purpose: a recovered field is payload like any other and must face
+        # the redactor, or a secret passed through ``extra`` would bypass it.
         if ctx.redactor is not None:
             shared_processors.append(_redaction_processor(ctx.redactor))
         shared_processors.extend(
