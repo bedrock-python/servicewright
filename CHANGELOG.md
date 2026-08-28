@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.3.0...servicewright-v0.4.0) (2026-08-28)
+
+
+### Features
+
+* **observability:** let KeyRedactor exempt exact field names with safe_keys ([#14](https://github.com/bedrock-python/servicewright/issues/14)) ([a1b7ecf](https://github.com/bedrock-python/servicewright/commit/a1b7ecf9dc059d1eb6da0eb6d747c1755a0959c1)), closes [#11](https://github.com/bedrock-python/servicewright/issues/11)
+* **observability:** pass sentry_sdk.init options through SentryErrorTrackingSink ([#12](https://github.com/bedrock-python/servicewright/issues/12)) ([b434a21](https://github.com/bedrock-python/servicewright/commit/b434a212296cfa01a5f62be99e2a92f6355ca647)), closes [#9](https://github.com/bedrock-python/servicewright/issues/9)
+
+
+### Bug Fixes
+
+* **core:** make the observability section protocols read-only so narrowed settings satisfy them ([#13](https://github.com/bedrock-python/servicewright/issues/13)) ([ebc2c05](https://github.com/bedrock-python/servicewright/commit/ebc2c0528894ea550245ea88ad8726c39b751627)), closes [#8](https://github.com/bedrock-python/servicewright/issues/8)
+* **observability:** keep stdlib extra fields in the structlog sink ([#10](https://github.com/bedrock-python/servicewright/issues/10)) ([ae85ffb](https://github.com/bedrock-python/servicewright/commit/ae85ffbea19758c5c6af49484b45d25e8fb52897))
+
 ## [0.3.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.2.0...servicewright-v0.3.0) (2026-08-28)
 
 
