@@ -69,8 +69,8 @@ hands it to you:
 
 | Entrypoint | Opened by | Once per | `context` it carries |
 | --- | --- | --- | --- |
-| FastAPI | `UnitScopeMiddleware` (outermost) | request | `{"request": Request}` |
-| Litestar | `UnitScopeMiddleware` (outermost) | request | `{"request": Request}` |
+| FastAPI | `UnitScopeMiddleware` (outermost; opt out with `MiddlewareConfig(unit_scope=False)`) | request | `{"request": Request}` |
+| Litestar | `UnitScopeMiddleware` (outermost; opt out with `LitestarConfig(unit_scope=False)`) | request | `{"request": Request}` |
 | gRPC | `UnitScopeInterceptor` (outermost) | RPC | `grpc_method`, `request_id`, `user_id`, `tenant_id`, `trace_id`, `idempotency_key`, `client_ip`, `user_agent` |
 | Scheduler | the entrypoint | job run | `{"job_id": ..., "run_id": ...}` |
 | Daemon | the entrypoint | the whole loop | `None` |
@@ -162,12 +162,16 @@ Implement the two context managers and you are done. Two rules:
    the last cleanup step.
 2. **`unit_scope()` must be independent per call.** Entrypoints open many of them concurrently.
 
-!!! warning "Do not also install your DI library's own framework integration"
+!!! warning "One owner per request"
 
     dishka, for instance, ships `setup_dishka()` for FastAPI and Litestar, which opens a request
-    scope of its own. servicewright's middleware already opens one. Installing both gives you two
-    scopes per request — two sessions, two transactions. The bundled
-    [dishka adapter](../adapters/dishka.md) deliberately does not wire the native integration.
+    scope of its own. servicewright's middleware opens one too. Installing both gives you two
+    scopes per request — two sessions, two transactions. Pick one: resolve through `UnitScopeDep`
+    (the default), or hand the request scope to your DI integration with
+    `MiddlewareConfig(unit_scope=False)` / `LitestarConfig(unit_scope=False)`. The bundled
+    [dishka adapter](../adapters/dishka.md#using-dishkas-own-fastapi-or-litestar-integration)
+    refuses to open a second scope on a request dishka has already scoped, so the mistake fails
+    loudly rather than silently.
 
 ## Next
 

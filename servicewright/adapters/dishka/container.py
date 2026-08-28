@@ -24,10 +24,12 @@ Importing this module requires the ``dishka`` extra::
 Note:
     This adapter does NOT install dishka's native framework integration
     (``setup_dishka`` / ``FromDishka`` handler injection) for FastAPI or
-    Litestar. servicewright opens the per-unit scope itself via its own
-    middleware/interceptor, so wiring dishka's framework setup here too would
-    double-open the request scope. Native ``FromDishka`` handler-injection is a
-    separate, later enhancement layered on top of this adapter.
+    Litestar: servicewright's HTTP adapters open the per-request scope
+    themselves. To let dishka's integration own it instead, switch the
+    adapter's middleware off (``MiddlewareConfig(unit_scope=False)`` /
+    ``LitestarConfig(unit_scope=False)``) and call ``setup_dishka`` from
+    ``configure_app``. Installing both would open two REQUEST scopes per
+    request, which :meth:`DishkaContainer.unit_scope` refuses to do.
 """
 
 from __future__ import annotations
@@ -44,6 +46,11 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Mapping
 
 T = TypeVar("T")
+
+# Where dishka's own ASGI integrations publish the request container: their
+# middleware sets it on the request before anything else runs, so finding it on
+# the request servicewright is about to scope means both integrations are installed.
+_DISHKA_REQUEST_CONTAINER_ATTR = "dishka_container"
 
 
 class DishkaScope:
@@ -108,10 +115,33 @@ class DishkaContainer:
 
         Exiting the ``async with`` closes the REQUEST scope, letting dishka
         finalize every REQUEST-scoped dependency.
+
+        Raises:
+            RuntimeError: If the request in ``context`` already carries a dishka
+                request container — dishka's own framework integration
+                (``setup_dishka``) is installed next to servicewright's
+                per-request middleware, which would open two REQUEST scopes
+                per request.
         """
+        _reject_double_open(context)
         request_context = dict(context) if context is not None else None
         async with self._container(context=request_context) as request_container:
             yield DishkaScope(request_container)
+
+
+def _reject_double_open(context: Mapping[Any, Any] | None) -> None:
+    """Raise if the HTTP request in ``context`` is already scoped by dishka's own integration."""
+    request = context.get("request") if context else None
+    state = getattr(request, "state", None)
+    if getattr(state, _DISHKA_REQUEST_CONTAINER_ATTR, None) is None:
+        return
+    raise RuntimeError(
+        "This request already carries a dishka request container: dishka's framework integration "
+        "(setup_dishka) and servicewright's per-request unit scope are both installed, which would open "
+        "two REQUEST scopes per request. Let dishka own the scope with MiddlewareConfig(unit_scope=False) "
+        "(FastAPI) / LitestarConfig(unit_scope=False) (Litestar), or drop setup_dishka and resolve through "
+        "UnitScopeDep / current_unit_scope()."
+    )
 
 
 __all__ = [

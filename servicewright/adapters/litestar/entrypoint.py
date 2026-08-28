@@ -14,7 +14,8 @@ for Litestar, mirroring the FastAPI entrypoint shape:
   and ``drain`` closes the listener. ``drain`` lets in-flight requests finish; ``stop`` is a
   hard stop.
 - Per-request ``UnitScope`` is provided DI-agnostically by
-  :class:`UnitScopeMiddleware` (installed automatically).
+  :class:`UnitScopeMiddleware` (installed unless ``LitestarConfig.unit_scope``
+  is off, for apps whose DI integration owns the request scope itself).
 
 This binding is intentionally framework-pure: it carries NO middleware stack /
 context / error-rendering machinery (those are FastAPI-specific folds), so it
@@ -148,13 +149,20 @@ class LitestarEntrypoint(ServerEntrypoint):
         # LoggingConfig (it reconfigures the root logger via dictConfig).
         user_kwargs.pop("logging_config", None)
 
+        middleware: list[Any] = list(user_middleware)
+        dependencies: dict[str, Any] = dict(user_dependencies)
+        if self._config.unit_scope:
+            # UnitScopeMiddleware outermost so the per-request scope wraps everything,
+            # and the unit_scope dependency cannot be overridden by the user. Both are
+            # skipped when the framework's own DI integration owns the request scope.
+            middleware.insert(0, UnitScopeMiddleware(ctx.container))
+            dependencies["unit_scope"] = Provide(get_unit_scope, sync_to_thread=False)
+
         params: dict[str, Any] = {
             **user_kwargs,
             "route_handlers": [*route_handlers, *user_route_handlers],
-            # UnitScopeMiddleware outermost so the per-request scope wraps everything.
-            "middleware": [UnitScopeMiddleware(ctx.container), *user_middleware],
-            # The unit_scope dependency cannot be overridden by the user.
-            "dependencies": {**user_dependencies, "unit_scope": Provide(get_unit_scope, sync_to_thread=False)},
+            "middleware": middleware,
+            "dependencies": dependencies,
             "logging_config": None,
         }
         app = Litestar(**params)

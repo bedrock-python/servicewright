@@ -98,7 +98,10 @@ Check `settings.logging`, and try `ObsConfig(logging="stdlib")` to rule the back
   the response finishes, so this works; a task you scheduled with `asyncio.create_task()` and did
   not await does **not** inherit the scope reliably;
 - module-level or startup code;
-- a thread (`run_in_executor`), which has its own contextvars.
+- a thread (`run_in_executor`), which has its own contextvars;
+- the adapter's scope is switched off (`MiddlewareConfig(unit_scope=False)` /
+  `LitestarConfig(unit_scope=False)`) because your DI integration owns the request scope — resolve
+  through that integration instead.
 
 Resolve what you need from the scope **inside** the request and pass the object on.
 
@@ -113,13 +116,23 @@ async def bind(self, ctx: ServiceContext) -> None:
     ...
 ```
 
+### `RuntimeError: This request already carries a dishka request container`
+
+dishka's native framework integration (`setup_dishka`) is installed alongside servicewright's
+per-request middleware. Both would open a `Scope.REQUEST`, so `DishkaContainer` refuses on the
+first request — the readiness probe included — instead of shipping two sessions per request.
+
+Pick one owner: keep `setup_dishka` and switch the adapter's scope off with
+`MiddlewareConfig(unit_scope=False)` / `LitestarConfig(unit_scope=False)`, or remove
+`setup_dishka` and resolve through `UnitScopeDep` / `current_unit_scope()`. See
+[dishka](../adapters/dishka.md#using-dishkas-own-fastapi-or-litestar-integration).
+
 ### Two database sessions (or two transactions) per request
 
-dishka's native framework integration (`setup_dishka`) was installed alongside servicewright's
-middleware. Both open a `Scope.REQUEST`.
-
-Remove `setup_dishka` and resolve through `UnitScopeDep` / `current_unit_scope()`. See
-[dishka](../adapters/dishka.md#do-not-also-call-setup_dishka).
+Your DI library's own framework integration opens a request scope next to servicewright's
+middleware. With dishka this fails loudly (see above); another container may not check. Hand the
+request scope to one of them — `MiddlewareConfig(unit_scope=False)` /
+`LitestarConfig(unit_scope=False)` lets the framework integration own it.
 
 ### A scheduled job runs two or three times per tick
 

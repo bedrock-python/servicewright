@@ -15,6 +15,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from litestar import get
+from litestar.di import Provide
 from litestar.testing import TestClient
 
 from servicewright import AppSpec, Entrypoint, Plugin, ServerEntrypoint, Service
@@ -24,6 +25,7 @@ from servicewright.adapters.litestar import (
     LitestarConfig,
     LitestarEntrypoint,
     LitestarPlugin,
+    UnitScopeMiddleware,
     current_unit_scope,
     get_unit_scope,
 )
@@ -376,6 +378,49 @@ def test__litestar_get_unit_scope__no_scope_on_the_connection__raises() -> None:
     request.scope = {}  # no state at all
     with pytest.raises(LookupError, match="No active Litestar unit scope"):
         get_unit_scope(request)
+
+
+def test__litestar_config__default__owns_the_unit_scope() -> None:
+    assert LitestarConfig().unit_scope is True
+
+
+async def test__litestar_unit_scope__disabled__opens_no_scope() -> None:
+    @get("/x")
+    async def x() -> dict[str, bool]:
+        return {"ok": True}
+
+    container = FakeContainer()
+    ep = LitestarEntrypoint(config=LitestarConfig(port=0, unit_scope=False), route_handlers=(x,))
+    client = await _build_client(ep, _make_service_ctx(container))
+
+    assert client.get("/x").json() == {"ok": True}
+    assert container.unit_scopes_opened == 0
+
+
+async def test__litestar_unit_scope__disabled__installs_neither_the_middleware_nor_the_dependency() -> None:
+    ep = LitestarEntrypoint(config=LitestarConfig(port=0, unit_scope=False))
+    app = await ep.build_app(_make_service_ctx(FakeContainer()))
+    assert not any(isinstance(m, UnitScopeMiddleware) for m in app.middleware)
+    assert "unit_scope" not in app.dependencies
+
+
+async def test__litestar_unit_scope__disabled__releases_the_reserved_dependency_name() -> None:
+    async def my_unit_scope() -> str:
+        return "mine"
+
+    @get("/mine")
+    async def mine(unit_scope: str) -> dict[str, str]:
+        return {"unit_scope": unit_scope}
+
+    config = LitestarConfig(
+        port=0,
+        unit_scope=False,
+        litestar_kwargs={"dependencies": {"unit_scope": Provide(my_unit_scope)}},
+    )
+    ep = LitestarEntrypoint(config=config, route_handlers=(mine,))
+    client = await _build_client(ep, _make_service_ctx(FakeContainer()))
+
+    assert client.get("/mine").json() == {"unit_scope": "mine"}
 
 
 # --------------------------------------------------------------------------- #

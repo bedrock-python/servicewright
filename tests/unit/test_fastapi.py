@@ -431,6 +431,58 @@ def test__fastapi_get_unit_scope__middleware_absent__raises() -> None:
         get_unit_scope(request)
 
 
+def test__middleware_config__default__owns_the_unit_scope() -> None:
+    assert MiddlewareConfig().unit_scope is True
+
+
+async def test__fastapi_unit_scope__disabled__opens_no_scope() -> None:
+    router = APIRouter()
+
+    @router.get("/x")
+    async def x() -> dict[str, bool]:
+        return {"ok": True}
+
+    container = FakeContainer()
+    ep = FastApiEntrypoint(
+        config=HttpConfig(port=0),
+        routers=(router,),
+        middlewares=MiddlewareConfig(unit_scope=False),
+    )
+    client = await _build_client(ep, _make_service_ctx(container))
+
+    assert client.get("/x").json() == {"ok": True}
+    assert container.unit_scopes_opened == 0
+
+
+async def test__fastapi_unit_scope__disabled__leaves_the_rest_of_the_stack_in_place() -> None:
+    ep = FastApiEntrypoint(config=HttpConfig(port=0), middlewares=MiddlewareConfig(unit_scope=False))
+    app = await ep.build_app(_make_service_ctx(FakeContainer()))
+    names = [m.cls.__name__ for m in app.user_middleware]
+    assert "UnitScopeMiddleware" not in names
+    # The context layer is now the outermost; nothing else moved.
+    assert names[0] == "ContextMiddleware"
+
+
+async def test__fastapi_unit_scope__disabled__unit_scope_dep_fails_loudly(caplog: pytest.LogCaptureFixture) -> None:
+    router = APIRouter()
+
+    @router.get("/scoped")
+    async def scoped(scope: UnitScopeDep) -> dict[str, Any]:
+        return {"val": await scope.get(str)}
+
+    ep = FastApiEntrypoint(
+        config=HttpConfig(port=0),
+        routers=(router,),
+        middlewares=MiddlewareConfig(unit_scope=False),
+    )
+    client = await _build_client(ep, _make_service_ctx(FakeContainer(provides={str: "dep-value"})))
+    with caplog.at_level(logging.ERROR):
+        resp = client.get("/scoped")
+
+    assert resp.status_code == 500
+    assert "MiddlewareConfig.unit_scope" in caplog.text
+
+
 # --------------------------------------------------------------------------- #
 # Exception handlers -> RFC 9457 problem details (default renderer)
 # --------------------------------------------------------------------------- #
@@ -637,8 +689,18 @@ async def test__middleware_stack__default_config__is_installed_in_the_documented
         assert expected in names
 
 
-async def test__middleware_stack__everything_disabled__keeps_only_the_always_on_pair() -> None:
-    middlewares = MiddlewareConfig()
+@pytest.mark.parametrize(
+    ("unit_scope", "expected"),
+    [
+        (True, ["UnitScopeMiddleware", "UnhandledErrorMiddleware"]),
+        (False, ["UnhandledErrorMiddleware"]),
+    ],
+)
+async def test__middleware_stack__everything_else_disabled__keeps_only_the_always_on_layers(
+    unit_scope: bool,
+    expected: list[str],
+) -> None:
+    middlewares = MiddlewareConfig(unit_scope=unit_scope)
     middlewares.cors.enabled = False
     middlewares.gzip.enabled = False
     middlewares.logging.enabled = False
@@ -650,9 +712,10 @@ async def test__middleware_stack__everything_disabled__keeps_only_the_always_on_
     ep = FastApiEntrypoint(config=HttpConfig(port=0), middlewares=middlewares)
     app = await ep.build_app(_make_service_ctx(FakeContainer()))
     names = [m.cls.__name__ for m in app.user_middleware]
-    # The always-on pair remains: the unit scope, and the correlated last-resort
-    # error handler (a 500 must stay renderable whatever else is switched off).
-    assert names == ["UnitScopeMiddleware", "UnhandledErrorMiddleware"]
+    # The correlated last-resort error handler can never be switched off (a 500
+    # must stay renderable whatever else is); the unit scope only steps aside for
+    # a framework DI integration that owns the request scope itself.
+    assert names == expected
 
 
 async def test__middleware_stack__custom_middleware_configured__is_added() -> None:

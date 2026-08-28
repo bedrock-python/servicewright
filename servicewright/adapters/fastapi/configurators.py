@@ -89,7 +89,8 @@ def setup_middleware_stack(
     to run). We register from innermost to outermost, so the order below is:
     custom -> CORS -> GZip -> logging -> processing-time -> sentry -> context
     -> unit-scope, with the unit scope as the outermost wrapper (so every other
-    middleware + the handler see a live unit scope).
+    middleware + the handler see a live unit scope) unless ``config.unit_scope``
+    is off because the framework's own DI integration owns the request scope.
 
     ``ContextMiddleware`` is the single owner of the request id: it extracts or
     mints it, binds it into the context store and echoes it back to the client,
@@ -136,8 +137,10 @@ def setup_middleware_stack(
         )
 
     # Unit scope LAST so it is the OUTERMOST middleware: every other middleware
-    # and the handler run inside a live per-request UnitScope.
-    app.add_middleware(UnitScopeMiddleware, container=container)
+    # and the handler run inside a live per-request UnitScope. Skipped when the
+    # framework's own DI integration owns the request scope instead.
+    if config.unit_scope:
+        app.add_middleware(UnitScopeMiddleware, container=container)
 
 
 def setup_exception_handlers(

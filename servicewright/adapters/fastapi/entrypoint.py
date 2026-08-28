@@ -17,7 +17,8 @@ Host + Entrypoints model:
   then closes the listener and lets in-flight requests finish; ``stop`` is a
   hard stop.
 - Per-request ``UnitScope`` is provided DI-agnostically by
-  :class:`UnitScopeMiddleware` (installed automatically).
+  :class:`UnitScopeMiddleware` (installed unless ``MiddlewareConfig.unit_scope``
+  is off, for apps whose DI integration owns the request scope itself).
 """
 
 from __future__ import annotations
