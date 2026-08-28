@@ -160,6 +160,19 @@ sounds: a Sentry event keeps stack-frame locals under
 `breadcrumbs.values[i].data`. A redactor that only recursed into dicts would mask the tidy `extra`
 block and ship your credentials in the frame locals.
 
+The match is by substring — that is what makes `password` cover `password_hash` and `token` cover
+`access_token`. The cost is reach: a short fragment matches more than it looks like it does. Adding
+`code` to catch `otp_code` also masks `status_code` and `error_code`, including in servicewright's
+own access log. `safe_keys` is how you say "this exact name is not a secret":
+
+```python
+from servicewright.core.observability import DEFAULT_SENSITIVE_KEYS
+
+KeyRedactor(sensitive_keys=DEFAULT_SENSITIVE_KEYS | {"code"}, safe_keys={"status_code", "error_code"})
+```
+
+Safe keys are whole names, compared case-insensitively, and are checked before the fragments.
+
 Any callable `dict -> dict` works in its place.
 
 ### Masking by value

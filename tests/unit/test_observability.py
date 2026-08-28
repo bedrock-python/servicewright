@@ -23,7 +23,7 @@ from servicewright.core.observability import (
     resolve_sink,
 )
 from servicewright.core.observability import registry as registry_mod
-from servicewright.core.observability.redaction import MASK
+from servicewright.core.observability.redaction import DEFAULT_SENSITIVE_KEYS, MASK
 from servicewright.testing import FakeSettings
 
 pytestmark = pytest.mark.unit
@@ -486,6 +486,111 @@ def test__key_redactor__self_referencing_payload__does_not_recurse_forever(redac
 
     # Assert
     assert result["password"] == MASK
+
+
+# --------------------------------------------------------------------------- #
+# safe_keys: exact names the fragment rule must not swallow
+# --------------------------------------------------------------------------- #
+@pytest.fixture
+def code_redactor() -> KeyRedactor:
+    """A service whose OTP and join codes are secret but whose logged `status_code` is not."""
+    return KeyRedactor(sensitive_keys=DEFAULT_SENSITIVE_KEYS | {"code"}, safe_keys={"status_code"})
+
+
+def test__key_redactor__safe_key_beside_the_fragment_it_matches__exempts_only_the_exact_name(
+    code_redactor: KeyRedactor,
+) -> None:
+    # Act
+    result = code_redactor({"status_code": 200, "code": "123456", "otp_code": "654321"})
+
+    # Assert
+    assert result == {"status_code": 200, "code": MASK, "otp_code": MASK}
+
+
+def test__key_redactor__safe_key_spelled_in_another_case__is_still_exempt(code_redactor: KeyRedactor) -> None:
+    # Act
+    result = code_redactor({"Status_Code": 200})
+
+    # Assert
+    assert result == {"Status_Code": 200}
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        (
+            {"response": {"status_code": 200, "code": "123456"}},
+            {"response": {"status_code": 200, "code": MASK}},
+        ),
+        (
+            {"frames": [{"vars": {"status_code": 200, "code": "123456"}}]},
+            {"frames": [{"vars": {"status_code": 200, "code": MASK}}]},
+        ),
+    ],
+)
+def test__key_redactor__safe_key_below_the_top_level__is_exempt_there_too(
+    code_redactor: KeyRedactor,
+    payload: dict[str, Any],
+    expected: dict[str, Any],
+) -> None:
+    # Act
+    result = code_redactor(payload)
+
+    # Assert
+    assert result == expected
+
+
+# --------------------------------------------------------------------------- #
+# The default set, both directions: compounds masked, our own field names kept
+# --------------------------------------------------------------------------- #
+# Field names servicewright's own adapters log through `extra=`: the default set and that vocabulary stay pinned.
+_LOGGED_FIELD_NAMES = [
+    "address",
+    "backend",
+    "budget_seconds",
+    "client_ip",
+    "concern",
+    "duration_ms",
+    "elapsed_seconds",
+    "environment",
+    "error_code",
+    "error_kind",
+    "grpc_method",
+    "idempotency_key",
+    "ip",
+    "job_id",
+    "kind",
+    "method",
+    "params",
+    "path",
+    "phase",
+    "port",
+    "query",
+    "request_id",
+    "run_id",
+    "service",
+    "status_code",
+    "user_agent",
+    "warmer",
+]
+
+
+@pytest.mark.parametrize("name", _LOGGED_FIELD_NAMES)
+def test__key_redactor__field_name_the_library_logs_itself__survives_the_default_set(name: str) -> None:
+    # Act
+    result = KeyRedactor()({name: "value"})
+
+    # Assert
+    assert result == {name: "value"}
+
+
+@pytest.mark.parametrize("key", ["password_hash", "access_token", "api_key", "session_id", "Authorization"])
+def test__key_redactor__compound_name_around_a_default_fragment__is_masked(key: str) -> None:
+    # Act
+    result = KeyRedactor()({key: "value"})
+
+    # Assert
+    assert result == {key: MASK}
 
 
 # --------------------------------------------------------------------------- #
