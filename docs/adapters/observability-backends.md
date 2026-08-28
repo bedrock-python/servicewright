@@ -75,6 +75,51 @@ sampling rates from `settings.error_tracking`. The [redactor](../concepts/observ
 is installed as `before_send`, so every outgoing event is filtered — including stack-frame locals
 and breadcrumb payloads.
 
+### Everything else `sentry_sdk.init` takes
+
+The settings section models the deployment facts. Anything else — `ignore_errors`, a
+`before_send` that drops, `before_send_transaction`, `traces_sampler`, `integrations`,
+`send_default_pii` — goes through the sink's constructor, via
+[instance injection](../concepts/observability.md#instance-injection):
+
+```python
+from servicewright.adapters.observability._errors.sentry import SentryErrorTrackingSink
+
+observability = ObservabilityManager(
+    ObsConfig(error_tracking="sentry"),
+    error_tracking=SentryErrorTrackingSink(ignore_errors=[DomainError]),
+)
+```
+
+A `before_send` given this way is composed with the redactor, not replaced by it: it runs first,
+with the full `(event, hint)` — `hint["exc_info"]` for a captured exception,
+`hint["log_record"]` for one that arrived through the logging integration — and may return
+`None` to drop the event; whatever survives is redacted.
+
+```python
+def keep(event: dict, hint: dict) -> dict | None:
+    exc = hint.get("exc_info", (None, None, None))[1]
+    return None if isinstance(exc, DomainError) else event
+
+
+SentryErrorTrackingSink(before_send=keep)
+```
+
+Health probes are the other usual case. With Sentry performance on, kubelet's `livez` / `readyz`
+polling becomes a transaction every few seconds per pod; drop the `/system` namespace with
+`before_send_transaction` (or a `traces_sampler` returning `0` for it):
+
+```python
+def drop_probes(event: dict, hint: dict) -> dict | None:
+    return None if event.get("transaction", "").startswith("/system/") else event
+
+
+SentryErrorTrackingSink(before_send_transaction=drop_probes)
+```
+
+`dsn`, `environment`, `release`, the sample rates and `debug` are settings-driven and the sink
+rejects them at construction, so a value cannot come from two places.
+
 The reporting seam:
 
 ```python

@@ -301,6 +301,102 @@ def test__sentry_sink_setup__no_redactor__installs_no_before_send_hook(monkeypat
     assert init_calls[0]["before_send"] is None
 
 
+@pytest.fixture
+def sentry_init_calls(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+    """Capture the kwargs of every ``sentry_sdk.init`` call instead of initializing the SDK."""
+    calls: list[dict[str, Any]] = []
+    monkeypatch.setattr(sentry_mod.sentry_sdk, "init", lambda **kwargs: calls.append(kwargs))
+    return calls
+
+
+class _DomainError(Exception):
+    """An expected business error a service does not want reported."""
+
+
+def _drop_domain_errors(event: dict[str, Any], hint: dict[str, Any]) -> dict[str, Any] | None:
+    exc_info = hint.get("exc_info")
+    if exc_info is not None and isinstance(exc_info[1], _DomainError):
+        return None
+    return event
+
+
+def test__sentry_sink__init_kwargs_given__are_forwarded_next_to_the_settings_driven_ones(
+    sentry_init_calls: list[dict[str, Any]],
+) -> None:
+    # Arrange
+    sink = SentryErrorTrackingSink(ignore_errors=[_DomainError], send_default_pii=False)
+
+    # Act
+    sink.setup(_ctx(_settings_with(error_tracking=_SentrySettings())))
+
+    # Assert
+    kwargs = sentry_init_calls[0]
+    assert kwargs["ignore_errors"] == [_DomainError]
+    assert kwargs["send_default_pii"] is False
+    assert kwargs["dsn"] == "http://key@sentry.local/1"
+    assert kwargs["release"] == "1.2.3"
+
+
+@pytest.mark.parametrize(
+    "argument",
+    ["dsn", "environment", "release", "traces_sample_rate", "profiles_sample_rate", "debug"],
+)
+def test__sentry_sink__settings_driven_argument_given__raises_at_construction(argument: str) -> None:
+    with pytest.raises(ValueError, match=f"{argument}: driven by settings.error_tracking"):
+        SentryErrorTrackingSink(**{argument: "x"})
+
+
+def test__sentry_sink__before_send_given__runs_first_with_the_hint_and_may_drop(
+    sentry_init_calls: list[dict[str, Any]],
+) -> None:
+    # Arrange
+    sink = SentryErrorTrackingSink(before_send=_drop_domain_errors)
+    sink.setup(_ctx(_settings_with(error_tracking=_SentrySettings()), redactor=KeyRedactor()))
+    before_send = sentry_init_calls[0]["before_send"]
+    event = {"extra": {"password": "hunter2"}, "message": "x"}
+
+    # Act
+    dropped = before_send(event, {"exc_info": (_DomainError, _DomainError("expected"), None)})
+    kept = before_send(event, {"exc_info": (ValueError, ValueError("unexpected"), None)})
+
+    # Assert
+    assert dropped is None
+    assert kept is not None
+    assert kept["extra"]["password"] == "[REDACTED]"
+
+
+def test__sentry_sink__before_send_given_without_a_redactor__is_installed_on_its_own(
+    sentry_init_calls: list[dict[str, Any]],
+) -> None:
+    # Arrange
+    sink = SentryErrorTrackingSink(before_send=_drop_domain_errors)
+    sink.setup(_ctx(_settings_with(error_tracking=_SentrySettings())))
+    before_send = sentry_init_calls[0]["before_send"]
+    event = {"extra": {"password": "hunter2"}}
+
+    # Act
+    kept = before_send(event, {"exc_info": (ValueError, ValueError("unexpected"), None)})
+
+    # Assert
+    assert kept == {"extra": {"password": "hunter2"}}
+
+
+def test__sentry_sink__before_send_transaction_given__is_forwarded_untouched(
+    sentry_init_calls: list[dict[str, Any]],
+) -> None:
+    # Arrange
+    def drop_probes(event: dict[str, Any], hint: dict[str, Any]) -> dict[str, Any] | None:
+        return None if str(event.get("transaction", "")).startswith("/system/") else event
+
+    sink = SentryErrorTrackingSink(before_send_transaction=drop_probes)
+
+    # Act
+    sink.setup(_ctx(_settings_with(error_tracking=_SentrySettings()), redactor=KeyRedactor()))
+
+    # Assert
+    assert sentry_init_calls[0]["before_send_transaction"] is drop_probes
+
+
 def test__sentry_reporter__error_reported__delegates_to_the_sdk(monkeypatch: pytest.MonkeyPatch) -> None:
     capture = MagicMock()
     breadcrumb = MagicMock()
