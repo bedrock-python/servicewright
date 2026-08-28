@@ -68,6 +68,22 @@ Sentry for something else does not touch your settings class.
 | `profiles_sample_rate` | `float` | Profiling sampling |
 | `debug` | `bool` | SDK debug mode |
 
+### Narrowing a section
+
+Sections may declare types **narrower** than the tables above: a `Literal` level, a bounded
+`sample_ratio`, a `port` newtype. Section members are read-only properties and nothing in
+servicewright writes to them, so a narrowed model still satisfies the protocol. `LogLevelStr` is
+exported for the log level:
+
+```python
+from servicewright.core.observability import LogLevelStr
+
+
+class LoggingSettings(BaseModel):
+    level: LogLevelStr = "INFO"
+    use_json: bool = True
+```
+
 ### Optional extras
 
 - `settings.environment` — if present, it is used as the environment for observability setup.
