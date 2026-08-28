@@ -79,6 +79,11 @@ def _settings_with(**sections: Any) -> FakeSettings:
     return settings
 
 
+def _json_line(captured: str, *, event: str) -> dict[str, Any]:
+    lines = [json.loads(line) for line in captured.strip().splitlines() if line.startswith("{")]
+    return next(line for line in lines if line["event"] == event)
+
+
 # --------------------------------------------------------------------------- #
 # metric names
 # --------------------------------------------------------------------------- #
@@ -486,6 +491,38 @@ def test__structlog_logging_sink__json_enabled__emits_redacted_json_lines(capsys
     # Foreign stdlib records render through the same chain.
     foreign = next(line for line in lines if line["event"] == "foreign record")
     assert foreign["logger"] == "test.foreign"
+
+
+def test__structlog_logging_sink__foreign_record_with_extra__keeps_the_extra_fields(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """servicewright's own lines carry their payload in ``extra``; dropping it blanks them all."""
+    sink = StructlogLoggingSink()
+    sink.setup(_ctx(_settings_with(logging=_LoggingSettings("INFO", use_json=True))))
+    try:
+        logging.getLogger("test.access").info(
+            "Request finished", extra={"method": "GET", "path": "/v1/users", "status_code": 200}
+        )
+    finally:
+        sink.shutdown()
+
+    payload = _json_line(capsys.readouterr().err, event="Request finished")
+    assert (payload["method"], payload["path"], payload["status_code"]) == ("GET", "/v1/users", 200)
+
+
+def test__structlog_logging_sink__foreign_record_with_extra__redacts_the_recovered_fields(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A field recovered from ``extra`` is payload like any other, so the redactor must see it."""
+    sink = StructlogLoggingSink()
+    sink.setup(_ctx(_settings_with(logging=_LoggingSettings("INFO", use_json=True)), redactor=KeyRedactor()))
+    try:
+        logging.getLogger("test.access").info("Token used", extra={"token": "s3cret", "user": "alice"})
+    finally:
+        sink.shutdown()
+
+    payload = _json_line(capsys.readouterr().err, event="Token used")
+    assert (payload["token"], payload["user"]) == ("[REDACTED]", "alice")
 
 
 def test__structlog_logging_sink_shutdown__called__restores_the_root_logger() -> None:
