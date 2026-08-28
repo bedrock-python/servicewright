@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.2.0...servicewright-v0.3.0) (2026-08-28)
+
+
+### Features
+
+* let the framework's DI integration own the HTTP request scope ([#5](https://github.com/bedrock-python/servicewright/issues/5)) ([2674140](https://github.com/bedrock-python/servicewright/commit/2674140080b31538ccdf8d3b8aeee2b8455d273f)), closes [#4](https://github.com/bedrock-python/servicewright/issues/4)
+
 ## [0.2.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.1.0...servicewright-v0.2.0) (2026-08-14)
 
 
