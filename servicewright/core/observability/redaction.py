@@ -45,17 +45,37 @@ MASK = "[REDACTED]"
 class KeyRedactor:
     """Masks values whose key contains a sensitive fragment (case-insensitive).
 
+    The match is by substring, which is what makes ``password`` cover
+    ``password_hash`` and ``token`` cover ``access_token`` — but a short fragment
+    such as ``code`` also masks ``status_code`` and ``error_code``. ``safe_keys``
+    is the way to say that an exact name is not a secret: those names are never
+    masked, whatever the fragments match.
+
     The whole structure is walked — nested dicts **and** values inside lists and
     tuples. That matters because the payloads this redactor is threaded into are
     list-shaped where it counts: a Sentry event keeps stack-frame locals under
     ``exception.values[i].stacktrace.frames[j].vars`` and breadcrumb payloads
     under ``breadcrumbs.values[i].data``, so a redactor that only recursed into
     dicts would mask the flat ``extra`` block and ship the locals in plaintext.
+
+    Args:
+        sensitive_keys: Fragments that make a key sensitive, matched as
+            case-insensitive substrings of the key name.
+        mask: Value written in place of a sensitive one.
+        safe_keys: Exact key names, compared case-insensitively, that are never
+            masked. Checked before the fragments.
     """
 
-    def __init__(self, sensitive_keys: frozenset[str] | set[str] = DEFAULT_SENSITIVE_KEYS, mask: str = MASK) -> None:
+    def __init__(
+        self,
+        sensitive_keys: frozenset[str] | set[str] = DEFAULT_SENSITIVE_KEYS,
+        mask: str = MASK,
+        *,
+        safe_keys: frozenset[str] | set[str] = frozenset(),
+    ) -> None:
         self._sensitive_keys = frozenset(key.lower() for key in sensitive_keys)
         self._mask = mask
+        self._safe_keys = frozenset(key.lower() for key in safe_keys)
 
     def __call__(self, data: dict[str, Any]) -> dict[str, Any]:
         """Return a redacted copy of ``data``."""
@@ -84,6 +104,8 @@ class KeyRedactor:
         if not isinstance(key, str):
             return False
         lowered = key.lower()
+        if lowered in self._safe_keys:
+            return False
         return any(fragment in lowered for fragment in self._sensitive_keys)
 
 
