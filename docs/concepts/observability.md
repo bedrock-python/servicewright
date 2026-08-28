@@ -98,7 +98,12 @@ own `setup()` decides what to do with the settings.
 
 ```python
 ObservabilityManager(metrics=StatsdMetricsSink(host="127.0.0.1"))
+ObservabilityManager(error_tracking=SentryErrorTrackingSink(ignore_errors=[DomainError]))
 ```
+
+The built-in backends take their options the same way — `PrometheusMetricsSink(registry=...)`,
+`SentryErrorTrackingSink(**sentry_sdk_init_kwargs)` — so instance injection is how a backend is
+tuned beyond what the settings section models.
 
 ## Third-party backends
 
