@@ -128,6 +128,36 @@ def deep_inside_something():
     while a streaming body is still being produced and before `BackgroundTask`s run. Awaiting the
     inner app to completion keeps the scope alive for the whole exchange.
 
+### Letting your DI integration own the scope
+
+If your DI library's own FastAPI integration already opens a request scope — dishka's
+`setup_dishka()` with `FromDishka` / `@inject` handlers, for instance — switch the adapter's
+middleware off so the two never open two scopes per request:
+
+```python
+from dishka.integrations.fastapi import setup_dishka
+
+from servicewright.adapters.fastapi import FastApiEntrypoint, MiddlewareConfig
+
+
+def configure_app(app: FastAPI, ctx: ServiceContext) -> None:
+    setup_dishka(ctx.container.container, app)   # dishka's ContainerMiddleware, outermost
+
+
+http = FastApiEntrypoint(
+    routers=(router,),
+    middlewares=MiddlewareConfig(unit_scope=False),
+    configure_app=configure_app,
+)
+```
+
+`unit_scope=False` drops `UnitScopeMiddleware` from the stack and nothing else: the context,
+logging, error and Sentry layers, the probes and the graceful drain do not depend on it. In this
+mode `UnitScopeDep`, `request.state.unit_scope` and `current_unit_scope()` raise `LookupError` —
+resolve through the integration that owns the scope. See
+[dishka](dishka.md#using-dishkas-own-fastapi-or-litestar-integration) for the full picture,
+including what happens if both end up installed.
+
 ## Middleware stack
 
 ```python
@@ -139,6 +169,7 @@ from servicewright.adapters.fastapi import (
 )
 
 middlewares = MiddlewareConfig(
+    unit_scope=True,
     context=True,
     sentry=True,
     processing_time=True,
@@ -168,7 +199,7 @@ flowchart TD
 
 | Layer | Does |
 | --- | --- |
-| **UnitScope** | opens the per-request DI scope; everything below runs inside it |
+| **UnitScope** | opens the per-request DI scope; everything below runs inside it. `unit_scope=False` leaves it out |
 | **context** | extracts/mints correlation ids, binds them, echoes `X-Request-ID` |
 | **unhandled-error** | renders a masked 500 *inside* the context layer, so it carries the request id |
 | **sentry** | enriches the Sentry scope from the request context |

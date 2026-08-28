@@ -111,7 +111,10 @@ opens the `UnitScope`**, so the footgun is impossible:
 
 - **`ServerEntrypoint`** — for socket-serving entrypoints whose framework/DI-integration opens the
   per-request scope itself (FastAPI, gRPC, Litestar, Flask). It has **no** `unit_scope` → cannot
-  double-open.
+  double-open. For the bundled HTTP adapters that framework-side owner is servicewright's own
+  `UnitScopeMiddleware` by default; `unit_scope=False` (`MiddlewareConfig` / `LitestarConfig`)
+  hands ownership to the DI library's native integration (dishka's `setup_dishka`), and the dishka
+  adapter refuses to open a second scope on a request that integration has already scoped.
 - **`ScopedEntrypoint`** — for loop/poll-driven entrypoints (scheduler, consumer, daemon, one-shot).
   It provides the **only** sanctioned per-unit API: `async with self.unit_scope(context) as scope:`.
 

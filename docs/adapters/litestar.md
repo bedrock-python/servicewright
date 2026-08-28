@@ -44,6 +44,7 @@ service = Service(spec, entrypoints=[http])
 | `litestar_kwargs` | `{}` | Forwarded to `Litestar(...)` |
 | `uvicorn_kwargs` | `{}` | Forwarded to `uvicorn.Config(...)` |
 | `health` | `HealthConfig()` | `enabled`, `liveness_path`, `readiness_path` |
+| `unit_scope` | `True` | Open a unit scope per request and provide the `unit_scope` dependency; `False` hands the request scope to your DI integration ([below](#letting-your-di-integration-own-the-scope)) |
 
 Health defaults here are `/system/livez` and `/system/readyz` — shorter than the FastAPI
 adapter's, which nests them under `/system/health/`.
@@ -75,6 +76,35 @@ scope = current_unit_scope()
 The `unit_scope` dependency name is reserved — a user-supplied dependency of that name is
 overridden, so the scope can never be shadowed by accident.
 
+### Letting your DI integration own the scope
+
+If your DI library's own Litestar integration already opens a request scope — dishka's
+`setup_dishka()` with `FromDishka` / `@inject` handlers, for instance — switch the adapter's scope
+off so the two never open two scopes per request:
+
+```python
+from dishka.integrations.litestar import setup_dishka
+
+from servicewright.adapters.litestar import LitestarConfig, LitestarEntrypoint
+
+
+def configure_app(app: Litestar, ctx: ServiceContext) -> None:
+    setup_dishka(ctx.container.container, app)
+
+
+http = LitestarEntrypoint(
+    config=LitestarConfig(unit_scope=False),
+    route_handlers=(get_order,),
+    configure_app=configure_app,
+)
+```
+
+With `unit_scope=False` the adapter installs neither `UnitScopeMiddleware` nor the `unit_scope`
+dependency — the name is yours again — and `current_unit_scope()` raises `LookupError`. The health
+probes and the lifecycle are unaffected. See
+[dishka](dishka.md#using-dishkas-own-fastapi-or-litestar-integration) for the full picture,
+including what happens if both end up installed.
+
 ## Merging your own Litestar options
 
 Litestar is constructed in a single call, so the adapter merges carefully. Your
@@ -83,8 +113,8 @@ Litestar is constructed in a single call, so the adapter merges carefully. Your
 | Key | Behaviour |
 | --- | --- |
 | `route_handlers` | yours are appended after the adapter's (health routes, your `route_handlers` argument) |
-| `middleware` | `UnitScopeMiddleware` is placed first, yours follow |
-| `dependencies` | merged, with `unit_scope` always winning |
+| `middleware` | `UnitScopeMiddleware` is placed first, yours follow (`unit_scope=False`: yours only) |
+| `dependencies` | merged, with `unit_scope` always winning (`unit_scope=False`: the name is not reserved) |
 | `logging_config` | **forced to `None`** |
 | everything else | passed through untouched |
 

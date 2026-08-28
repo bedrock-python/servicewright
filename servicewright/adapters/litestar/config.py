@@ -3,8 +3,8 @@
 The :class:`AppSpec` stays transport-neutral, so the Litestar entrypoint owns its
 own configuration. Config is taken AT CONSTRUCTION (never read from global
 settings). This binding is deliberately lean and general (no platform middleware
-stack / context machinery): just server params, app/uvicorn kwargs, and the
-``/system`` health probe paths.
+stack / context machinery): just server params, app/uvicorn kwargs, the
+``/system`` health probe paths and the per-request scope switch.
 """
 
 from __future__ import annotations
@@ -49,6 +49,15 @@ class LitestarConfig:
 
     # Components.
     health: HealthConfig = field(default_factory=HealthConfig)
+    unit_scope: bool = True
+    """Open one ``UnitScope`` per request (``UnitScopeMiddleware``, outermost) and
+    provide it app-wide as the reserved ``unit_scope`` dependency.
+
+    Set ``False`` when the framework's own DI integration already owns the
+    request scope — dishka's ``setup_dishka`` for instance — so the two never
+    open two scopes per request. Neither the middleware nor the dependency is
+    installed then, and ``current_unit_scope()`` raises ``LookupError``.
+    """
 
     @property
     def address(self) -> str:

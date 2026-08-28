@@ -8,8 +8,11 @@ exposes the scope two ways so handlers can reach it however they prefer:
 - via the Litestar dependency :func:`get_unit_scope` (provide it through
   ``dependencies={"unit_scope": Provide(get_unit_scope)}`` on a handler/router/app).
 
-This is the ONLY per-request scope mechanism; nothing else opens a unit scope.
-A dishka-native ``FromDishka`` integration is a separate, later enhancement.
+This is the ONLY per-request scope mechanism the adapter installs; nothing else
+in it opens a unit scope. When the framework's own DI integration owns the
+request scope instead (dishka's ``setup_dishka``), switch it off with
+``LitestarConfig(unit_scope=False)`` so the two never open two scopes per
+request.
 """
 
 from __future__ import annotations
@@ -44,7 +47,8 @@ def current_unit_scope() -> UnitScopeProtocol:
     except LookupError as exc:
         raise LookupError(
             "No active Litestar unit scope; current_unit_scope() must be called inside a request "
-            "served by a LitestarEntrypoint (UnitScopeMiddleware is added automatically)."
+            "served by a LitestarEntrypoint with UnitScopeMiddleware installed "
+            "(LitestarConfig.unit_scope=True, the default)."
         ) from exc
 
 
@@ -68,7 +72,8 @@ def get_unit_scope(request: Request) -> UnitScopeProtocol:
     if scope is None:
         raise LookupError(
             "No active Litestar unit scope on the connection state; the LitestarEntrypoint "
-            "UnitScopeMiddleware must be installed for get_unit_scope() to resolve."
+            "UnitScopeMiddleware must be installed (LitestarConfig.unit_scope=True, the default) "
+            "for get_unit_scope() to resolve."
         )
     return scope
 
@@ -76,10 +81,10 @@ def get_unit_scope(request: Request) -> UnitScopeProtocol:
 class UnitScopeMiddleware(ASGIMiddleware):
     """Open one ``UnitScope`` per request and expose it two ways.
 
-    Added to the Litestar app by the :class:`LitestarEntrypoint`. The scope
-    carries the ``Request`` as its ``context`` and is closed/reset after the
-    response is produced. Restricted to HTTP scopes (websockets/lifespan pass
-    through untouched).
+    Added to the Litestar app by the :class:`LitestarEntrypoint` unless
+    ``LitestarConfig.unit_scope`` is off. The scope carries the ``Request`` as
+    its ``context`` and is closed/reset after the response is produced.
+    Restricted to HTTP scopes (websockets/lifespan pass through untouched).
     """
 
     scopes = (ScopeType.HTTP,)

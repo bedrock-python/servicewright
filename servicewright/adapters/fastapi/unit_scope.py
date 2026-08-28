@@ -8,8 +8,11 @@ three ways so handlers can reach it however they prefer:
 - via a :class:`contextvars.ContextVar` read by :func:`current_unit_scope`,
 - via the FastAPI dependency :func:`get_unit_scope` (alias :data:`UnitScopeDep`).
 
-This is the ONLY per-request scope mechanism; nothing else opens a unit scope.
-A dishka-native ``FromDishka`` integration is a later contrib enhancement.
+This is the ONLY per-request scope mechanism the adapter installs; nothing else
+in it opens a unit scope. When the framework's own DI integration owns the
+request scope instead (dishka's ``setup_dishka``), switch it off with
+``MiddlewareConfig(unit_scope=False)`` so the two never open two scopes per
+request.
 """
 
 from __future__ import annotations
@@ -40,7 +43,8 @@ def current_unit_scope() -> UnitScopeProtocol:
     except LookupError as exc:
         raise LookupError(
             "No active HTTP unit scope; current_unit_scope() must be called inside a request "
-            "served by a FastApiEntrypoint (UnitScopeMiddleware is added automatically)."
+            "served by a FastApiEntrypoint with UnitScopeMiddleware installed "
+            "(MiddlewareConfig.unit_scope=True, the default)."
         ) from exc
 
 
@@ -59,7 +63,7 @@ def get_unit_scope(request: Request) -> UnitScopeProtocol:
     if scope is None:
         raise LookupError(
             "No active HTTP unit scope on request.state; the FastApiEntrypoint UnitScopeMiddleware "
-            "must be installed for get_unit_scope() to resolve."
+            "must be installed (MiddlewareConfig.unit_scope=True, the default) for get_unit_scope() to resolve."
         )
     return scope
 
@@ -71,9 +75,10 @@ UnitScopeDep = Annotated["UnitScopeProtocol", Depends(get_unit_scope)]
 class UnitScopeMiddleware:
     """Open one ``UnitScope`` per request and expose it three ways.
 
-    Added first (so it runs as the outermost wrapper around the handler) by the
-    :class:`FastApiEntrypoint`. The scope carries the ``Request`` as its
-    ``context`` and stays open until the response is fully delivered.
+    Installed by the :class:`FastApiEntrypoint` as the outermost wrapper around
+    the handler unless ``MiddlewareConfig.unit_scope`` is off. The scope
+    carries the ``Request`` as its ``context`` and stays open until the
+    response is fully delivered.
 
     This is deliberately a raw ASGI middleware rather than a
     ``BaseHTTPMiddleware``: the latter hands control back as soon as the

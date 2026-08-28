@@ -96,6 +96,14 @@ class MiddlewareConfig:
     """
 
     # Simple toggle-only middlewares.
+    unit_scope: bool = True
+    """Open one ``UnitScope`` per request (``UnitScopeMiddleware``, outermost).
+
+    Set ``False`` when the framework's own DI integration already owns the
+    request scope — dishka's ``setup_dishka`` for instance — so the two never
+    open two scopes per request. ``UnitScopeDep`` / ``current_unit_scope()``
+    then raise ``LookupError``; resolve through that integration instead.
+    """
     context: bool = True
     sentry: bool = True
     processing_time: bool = True

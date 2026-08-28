@@ -79,7 +79,9 @@ async with container.app_scope() as scope:
 
 The HTTP adapters pass `{"request": request}` as the unit-scope context. dishka keys its context
 by **type**, so that string key is not resolvable — a provider declaring
-`from_context(provides=Request, scope=Scope.REQUEST)` will not find it.
+`from_context(provides=Request, scope=Scope.REQUEST)` will not find it. (When dishka's own
+integration owns the request scope — [below](#using-dishkas-own-fastapi-or-litestar-integration) —
+its middleware puts `Request` in the context itself and none of this applies.)
 
 If you want the `Request` injectable, remap the context in a subclass:
 
@@ -119,17 +121,71 @@ onto the types your providers declare.
     [context store](../concepts/context.md), which is transport-neutral and works identically in a
     scheduled job.
 
-## Do not also call `setup_dishka()`
+## Using dishka's own FastAPI or Litestar integration
 
-dishka ships native FastAPI and Litestar integrations that open a request scope of their own.
-servicewright's middleware already opens one.
+servicewright's HTTP adapters open the request scope themselves and hand it out as
+`UnitScopeDep` / `current_unit_scope()`. dishka's native integrations — `setup_dishka()` with
+`FromDishka[...]` handler injection, `@inject`, `DishkaRoute` — open a `Scope.REQUEST` of their
+own. Both at once means **two** REQUEST scopes per request: two sessions, two transactions.
 
-Installing both gives you **two** REQUEST scopes per request — two sessions, two transactions, and
-a bug that only shows up under load. The adapter deliberately does not wire the native
-integration, and neither should you.
+Pick one owner. To keep dishka's integration (an existing codebase full of `FromDishka` is the
+usual reason), switch the adapter's scope off and install dishka from `configure_app`:
 
-`FromDishka`-style handler injection is therefore not available through this adapter; use
-`UnitScopeDep` and `scope.get(...)`.
+=== "FastAPI"
+
+    ```python
+    from dishka.integrations.fastapi import setup_dishka
+
+    from servicewright.adapters.fastapi import FastApiEntrypoint, MiddlewareConfig
+
+
+    def configure_app(app: FastAPI, ctx: ServiceContext) -> None:
+        setup_dishka(ctx.container.container, app)
+
+
+    http = FastApiEntrypoint(
+        routers=(router,),
+        middlewares=MiddlewareConfig(unit_scope=False),
+        configure_app=configure_app,
+    )
+    ```
+
+=== "Litestar"
+
+    ```python
+    from dishka.integrations.litestar import setup_dishka
+
+    from servicewright.adapters.litestar import LitestarConfig, LitestarEntrypoint
+
+
+    def configure_app(app: Litestar, ctx: ServiceContext) -> None:
+        setup_dishka(ctx.container.container, app)
+
+
+    http = LitestarEntrypoint(
+        config=LitestarConfig(unit_scope=False),
+        route_handlers=(get_order,),
+        configure_app=configure_app,
+    )
+    ```
+
+`ctx.container.container` is the APP-scoped `AsyncContainer` behind the adapter, so dishka's
+middleware and the Host share one container: the Host still opens the application scope first and
+closes it last, and every other entrypoint in the process (a scheduler, a consumer) keeps opening
+its unit scopes through `DishkaContainer`. Per request, dishka's middleware is the single owner,
+with everything its integration provides — `Request` in the context for `from_context(Request)`
+providers, a `SESSION` scope for websockets — and it holds the scope open until the response is
+fully sent, exactly as the adapter's middleware does.
+
+What changes: `UnitScopeDep`, `request.state.unit_scope`, the Litestar `unit_scope` dependency and
+`current_unit_scope()` raise `LookupError` in this mode. Resolve through `FromDishka` instead.
+
+### Both installed by mistake
+
+`DishkaContainer.unit_scope()` refuses to open a second scope for a request that dishka's
+middleware has already scoped, so the mistake cannot ship silently: the first request — the
+readiness probe included — fails with a `RuntimeError` naming the switch, instead of two sessions
+quietly diverging under load.
 
 ## Testing
 

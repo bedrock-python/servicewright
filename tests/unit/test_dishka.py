@@ -4,20 +4,39 @@ Exercises a REAL small dishka container (an APP-scoped singleton + a
 REQUEST-scoped dependency keyed off the request context), asserting that the
 :class:`DishkaContainer` maps ``AppScope`` <-> ``Scope.APP`` and ``UnitScope``
 <-> ``Scope.REQUEST`` and finalizes each tier on scope exit.
+
+The last section drives dishka's OWN FastAPI / Litestar integrations
+(``setup_dishka`` + ``FromDishka``) under the servicewright entrypoints with the
+adapters' request scope switched off, and checks that the adapter refuses to
+double-open the request scope when it is not.
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+import contextlib
+from collections.abc import AsyncIterator, Mapping
 from typing import Any
 
 import pytest
-from dishka import Provider, Scope, from_context, make_async_container, provide
+from dishka import AsyncContainer, FromDishka, Provider, Scope, from_context, make_async_container, provide
+from dishka.integrations.fastapi import inject as inject_fastapi
+from dishka.integrations.fastapi import setup_dishka as setup_dishka_fastapi
+from dishka.integrations.litestar import inject as inject_litestar
+from dishka.integrations.litestar import setup_dishka as setup_dishka_litestar
+from fastapi import APIRouter, Request
+from fastapi.testclient import TestClient
+from litestar import Request as LitestarRequest
+from litestar import get
+from litestar.testing import TestClient as LitestarTestClient
 
 from servicewright import AppSpec, Service
 from servicewright.adapters.dishka import DishkaContainer, DishkaScope
-from servicewright.testing import FakeEntrypoint, FakeSettings
+from servicewright.adapters.fastapi import FastApiEntrypoint, HttpConfig, MiddlewareConfig
+from servicewright.adapters.litestar import LitestarConfig, LitestarEntrypoint
+from servicewright.core.health import HealthRegistry
+from servicewright.core.spec import BootstrapContext, ServiceContext
+from servicewright.testing import FakeEntrypoint, FakeScope, FakeSettings
 
 pytestmark = pytest.mark.unit
 
@@ -192,3 +211,168 @@ async def test__dishka_container__driven_by_a_real_service__brackets_the_app_sco
     assert events[0] == "app-enter"
     assert "req-exit" in events
     assert events[-1] == "app-exit"
+
+
+# --------------------------------------------------------------------------- #
+# dishka's own framework integration owns the request scope
+# --------------------------------------------------------------------------- #
+class CurrentPath:
+    """A REQUEST-scoped dependency built from the framework's own ``Request``."""
+
+    def __init__(self, path: str) -> None:
+        self.path = path
+
+
+def _make_fastapi_provider(events: list[str]) -> Provider:
+    class _Provider(Provider):
+        request = from_context(provides=Request, scope=Scope.REQUEST)
+
+        @provide(scope=Scope.REQUEST)
+        async def current_path(self, request: Request) -> AsyncIterator[CurrentPath]:
+            events.append("req-enter")
+            yield CurrentPath(request.url.path)
+            events.append("req-exit")
+
+    return _Provider()
+
+
+def _make_litestar_provider(events: list[str]) -> Provider:
+    class _Provider(Provider):
+        request = from_context(provides=LitestarRequest, scope=Scope.REQUEST)
+
+        @provide(scope=Scope.REQUEST)
+        async def current_path(self, request: LitestarRequest) -> AsyncIterator[CurrentPath]:
+            events.append("req-enter")
+            yield CurrentPath(request.url.path)
+            events.append("req-exit")
+
+    return _Provider()
+
+
+class _CountingDishkaContainer(DishkaContainer):
+    """Records how often servicewright asks it for a unit scope."""
+
+    def __init__(self, container: AsyncContainer) -> None:
+        super().__init__(container)
+        self.unit_scopes_opened = 0
+
+    def unit_scope(
+        self, context: Mapping[Any, Any] | None = None
+    ) -> contextlib.AbstractAsyncContextManager[DishkaScope]:
+        self.unit_scopes_opened += 1
+        return super().unit_scope(context)
+
+
+def _make_service_ctx(container: DishkaContainer) -> ServiceContext[Any, Any]:
+    bootstrap: BootstrapContext[Any, Any] = BootstrapContext(
+        settings=FakeSettings(),
+        service_name="svc",
+        container=container,
+        lifecycle=object(),  # type: ignore[arg-type]
+    )
+    return ServiceContext(bootstrap=bootstrap, app_scope=FakeScope(), health=HealthRegistry())
+
+
+def _http_request(state: dict[str, Any] | None = None) -> Request:
+    scope: dict[str, Any] = {"type": "http", "method": "GET", "path": "/", "headers": [], "query_string": b""}
+    if state is not None:
+        scope["state"] = state
+    return Request(scope)
+
+
+async def test__unit_scope__request_already_scoped_by_dishkas_own_integration__raises() -> None:
+    container = _make_container()
+    request = _http_request(state={"dishka_container": object()})
+
+    async with container.app_scope():
+        with pytest.raises(RuntimeError, match="unit_scope=False"):
+            async with container.unit_scope({"request": request}):
+                pass
+
+
+async def test__unit_scope__request_not_scoped_by_dishkas_own_integration__opens() -> None:
+    container = _make_container()
+
+    async with container.app_scope(), container.unit_scope({"request": _http_request()}) as scope:
+        assert isinstance(scope, DishkaScope)
+
+
+async def test__fastapi_entrypoint__dishka_owns_the_request_scope__from_dishka_resolves_through_its_scope() -> None:
+    events: list[str] = []
+    container = _CountingDishkaContainer(make_async_container(_make_fastapi_provider(events)))
+    router = APIRouter()
+
+    @router.get("/path")
+    @inject_fastapi
+    async def read_path(current_path: FromDishka[CurrentPath]) -> dict[str, str]:
+        return {"path": current_path.path}
+
+    ep = FastApiEntrypoint(
+        config=HttpConfig(port=0),
+        routers=(router,),
+        middlewares=MiddlewareConfig(unit_scope=False),
+        configure_app=lambda app, ctx: setup_dishka_fastapi(ctx.container.container, app),
+    )
+
+    async with container.app_scope():
+        resp = TestClient(await ep.build_app(_make_service_ctx(container))).get("/path")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"path": "/path"}
+    # dishka's middleware opened the one REQUEST scope (with Request in its
+    # context); servicewright opened none.
+    assert events == ["req-enter", "req-exit"]
+    assert container.unit_scopes_opened == 0
+
+
+async def test__fastapi_entrypoint__dishka_integration_next_to_the_unit_scope__fails_the_first_request_loudly() -> None:
+    container = _make_container()
+    ep = FastApiEntrypoint(
+        config=HttpConfig(port=0),
+        configure_app=lambda app, ctx: setup_dishka_fastapi(ctx.container.container, app),
+    )
+
+    async with container.app_scope():
+        client = TestClient(await ep.build_app(_make_service_ctx(container)), raise_server_exceptions=True)
+        with pytest.raises(RuntimeError, match="two REQUEST scopes per request"):
+            client.get("/system/health/readyz")
+
+
+async def test__litestar_entrypoint__dishka_owns_the_request_scope__from_dishka_resolves_through_its_scope() -> None:
+    events: list[str] = []
+    container = _CountingDishkaContainer(make_async_container(_make_litestar_provider(events)))
+
+    @get("/path")
+    @inject_litestar
+    async def read_path(current_path: FromDishka[CurrentPath]) -> dict[str, str]:
+        return {"path": current_path.path}
+
+    ep = LitestarEntrypoint(
+        config=LitestarConfig(port=0, unit_scope=False),
+        route_handlers=(read_path,),
+        configure_app=lambda app, ctx: setup_dishka_litestar(ctx.container.container, app),
+    )
+
+    async with container.app_scope():
+        resp = LitestarTestClient(await ep.build_app(_make_service_ctx(container))).get("/path")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"path": "/path"}
+    assert events == ["req-enter", "req-exit"]
+    assert container.unit_scopes_opened == 0
+
+
+async def test__litestar_entrypoint__dishka_integration_next_to_the_unit_scope__fails_the_first_request_loudly() -> (
+    None
+):
+    container = _make_container()
+    ep = LitestarEntrypoint(
+        config=LitestarConfig(port=0, litestar_kwargs={"debug": True}),
+        configure_app=lambda app, ctx: setup_dishka_litestar(ctx.container.container, app),
+    )
+
+    async with container.app_scope():
+        resp = LitestarTestClient(await ep.build_app(_make_service_ctx(container))).get("/system/readyz")
+
+    assert resp.status_code == 500
+    assert "two REQUEST scopes per request" in resp.text
