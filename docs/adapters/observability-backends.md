@@ -83,7 +83,7 @@ The settings section models the deployment facts. Anything else — `ignore_erro
 [instance injection](../concepts/observability.md#instance-injection):
 
 ```python
-from servicewright.adapters.observability._errors.sentry import SentryErrorTrackingSink
+from servicewright.adapters.observability import SentryErrorTrackingSink
 
 observability = ObservabilityManager(
     ObsConfig(error_tracking="sentry"),
