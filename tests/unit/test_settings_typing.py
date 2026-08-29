@@ -10,6 +10,7 @@ narrowed or not.
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -109,6 +110,7 @@ def takes_protocol(settings: BaseServiceSettingsProtocol) -> None: ...
 
 
 takes_protocol(BaseServiceSettings())
+reveal_type(BaseServiceSettings().get_app_version())
 """
 
 _SHIPPED_MODELS_NARROWED = """\
@@ -132,6 +134,7 @@ def takes_protocol(settings: BaseServiceSettingsProtocol) -> None: ...
 
 
 takes_protocol(Settings())
+reveal_type(Settings().get_app_version())
 """
 
 
@@ -168,6 +171,10 @@ def test__settings_model__sections_declare_types_at_least_as_narrow__satisfies_t
     # Assert
     assert result.returncode == 0, result.stdout
     assert "Success:" in result.stdout, result.stdout
+    # ``ignore_missing_imports`` types an unresolvable module as Any, which would satisfy the
+    # protocol vacuously; the shipped-model snippets reveal a member so that cannot pass silently.
+    if "reveal_type" in source:
+        assert re.search(r'Revealed type is "(builtins\.)?str"', result.stdout), result.stdout
 
 
 def test__settings_model__section_missing_a_declared_member__fails_the_protocol(tmp_path: Path) -> None:
