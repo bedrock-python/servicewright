@@ -28,19 +28,9 @@ flowchart LR
 
 ```python title="runtime/settings.py"
 from pydantic import BaseModel
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import SettingsConfigDict
 
-
-class LoggingSettings(BaseModel):
-    level: str = "INFO"
-    use_json: bool = True
-
-
-class MetricsSettings(BaseModel):
-    enabled: bool = False        # the API exposes /system/metrics on its own port
-    host: str = "0.0.0.0"
-    port: int = 9090
-    prefix: str | None = None
+from servicewright.adapters.settings import BaseServiceSettings
 
 
 class HttpSettings(BaseModel):
@@ -49,22 +39,18 @@ class HttpSettings(BaseModel):
     cors_origins: list[str] = []
 
 
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_nested_delimiter="__", env_file=".env")
+class Settings(BaseServiceSettings):
+    model_config = SettingsConfigDict(env_file=".env")
 
-    app_version: str = "0.0.0"
-    environment: str = "local"
     database_dsn: str
 
     http: HttpSettings = HttpSettings()
-    logging: LoggingSettings = LoggingSettings()
-    metrics: MetricsSettings = MetricsSettings()
-    tracing: None = None
-    error_tracking: None = None
-
-    def get_app_version(self) -> str:
-        return self.app_version
 ```
+
+The observability sections come from `BaseServiceSettings` (`servicewright[settings]`): logging
+on, the metrics sink on with no standalone server (the API exposes `/system/metrics` on its own
+port), tracing and error tracking off until `TRACING__COLLECTOR_URL` / `ERROR_TRACKING__DSN` are
+set. See [Settings](../concepts/settings.md#shipped-models).
 
 ## 2. Container
 

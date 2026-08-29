@@ -3,7 +3,7 @@
 Everything that touches a third-party library lives in `servicewright.adapters`, behind an extra.
 The kernel never imports any of it.
 
-There are four families.
+There are five families.
 
 ## Entrypoint adapters
 
@@ -42,6 +42,16 @@ observability stack and the shutdown.
 
 Any other container works by implementing
 [two methods](../concepts/dependency-injection.md#the-contract).
+
+## Settings
+
+| Adapter | Class | Extra |
+| --- | --- | --- |
+| [Settings models](../concepts/settings.md#shipped-models) | `BaseServiceSettings` | `settings` |
+
+The settings contract as pydantic-settings models: one model per section, carrying the defaults
+the backends fall back to, and a composite that loads them from the environment. Any object with
+the right attributes still works.
 
 ## Observability backends
 

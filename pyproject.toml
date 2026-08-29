@@ -78,6 +78,11 @@ apscheduler3 = [
 dishka = [
     "dishka>=1.4.0",
 ]
+# The settings contract as pydantic-settings models (``servicewright.adapters.settings``):
+# one model per observability section plus ``BaseServiceSettings`` composing them.
+settings = [
+    "pydantic-settings>=2.3.0,<3.0.0",
+]
 # The uvloop event loop, picked by ``run_sync(loop="auto" | "uvloop")``. The
 # [fastapi] and [litestar] extras already carry it through uvicorn[standard];
 # this is for services that run on neither.
@@ -87,7 +92,7 @@ uvloop = [
 # Everything except [apscheduler3], which is the same distribution as
 # [apscheduler4] with an incompatible major and can never coexist with it.
 all = [
-    "servicewright[observability,metrics,sentry,redis,postgres,kafka,fastapi,fastapi-tracing,grpc,litestar,apscheduler4,dishka,uvloop]",
+    "servicewright[observability,metrics,sentry,redis,postgres,kafka,fastapi,fastapi-tracing,grpc,litestar,apscheduler4,dishka,settings,uvloop]",
 ]
 
 [dependency-groups]
@@ -112,6 +117,7 @@ test = [
     "litestar>=2.12.0",
     "uvicorn[standard]>=0.34.0,<1.0.0",
     "uvloop>=0.21.0",
+    "pydantic-settings>=2.3.0,<3.0.0",
 ]
 docs = [
     "zensical>=0.0.37",
@@ -225,6 +231,7 @@ forbidden_modules = [
     "aiokafka",
     "httpx",
     "pydantic",
+    "pydantic_settings",
     "uvloop",
 ]
 
@@ -238,6 +245,7 @@ modules = [
     "servicewright.adapters.apscheduler3",
     "servicewright.adapters.apscheduler4",
     "servicewright.adapters.dishka",
+    "servicewright.adapters.settings",
 ]
 
 [tool.ruff]

@@ -1,8 +1,9 @@
 # Settings
 
 servicewright reads a small, fixed set of things off a settings object that **you** own and
-construct. It never loads a `.env`, never reads `os.environ`, and never defines a settings class
-you have to inherit from.
+construct. The kernel never loads a `.env`, never reads `os.environ`, and never defines a class
+you have to inherit from: it checks shape, not ancestry. The `settings` extra ships that shape as
+ready-made [pydantic-settings models](#shipped-models), so you do not have to transcribe it.
 
 ## The protocol
 
@@ -24,21 +25,28 @@ Sentry for something else does not touch your settings class.
 
 ## The sections
 
+Each table lists the **default** the built-in backend falls back to when the field is missing
+from your section. The [shipped models](#shipped-models) carry the same values, so a model of
+your own that uses them behaves exactly like the shipped one.
+
 ### `logging`
 
-| Field | Type | Meaning |
-| --- | --- | --- |
-| `level` | `str` | Root log level: `DEBUG`, `INFO`, ... |
-| `use_json` | `bool` | JSON lines vs human-readable console output |
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `level` | `str` | `"INFO"` | Root log level: `DEBUG`, `INFO`, ... |
+| `use_json` | `bool` | `True` | JSON lines vs human-readable console output |
 
 ### `metrics`
 
-| Field | Type | Meaning |
-| --- | --- | --- |
-| `enabled` | `bool` | Start a standalone exposition server |
-| `host` | `str` | Bind host for that server |
-| `port` | `int` | Bind port for that server |
-| `prefix` | `str \| None` | Metric name prefix, for backends that use one |
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `enabled` | `bool` | `False` | Start a standalone exposition server |
+| `host` | `str` | `"0.0.0.0"` | Bind host for that server |
+| `port` | `int` | `9090` | Bind port for that server |
+| `prefix` | `str \| None` | `None` | Metric name prefix, for backends that use one |
+
+`host` and `port` are read only when `enabled` is true and have no backend fallback; their
+defaults are the shipped model's.
 
 !!! note
 
@@ -49,24 +57,24 @@ Sentry for something else does not touch your settings class.
 
 ### `tracing`
 
-| Field | Type | Meaning |
-| --- | --- | --- |
-| `service_name` | `str` | Resource service name (falls back to `AppSpec.service_name`) |
-| `collector_url` | `str \| None` | OTLP endpoint; `None` means no exporter |
-| `sample_ratio` | `float` | Ratio for the parent-based sampler |
-| `insecure` | `bool` | Plaintext OTLP connection |
-| `enable_console_exporter` | `bool` | Also print spans to stdout |
-| `excluded_urls` | `str \| None` | Comma-separated paths to skip |
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `service_name` | `str` | `""` | Resource service name; empty falls back to `AppSpec.service_name` |
+| `collector_url` | `str \| None` | `None` | OTLP endpoint; `None` means no exporter |
+| `sample_ratio` | `float` | `1.0` | Ratio for the parent-based sampler |
+| `insecure` | `bool` | `True` | Plaintext OTLP connection |
+| `enable_console_exporter` | `bool` | `False` | Also print spans to stdout |
+| `excluded_urls` | `str \| None` | `None` | Comma-separated paths to skip |
 
 ### `error_tracking`
 
-| Field | Type | Meaning |
-| --- | --- | --- |
-| `dsn` | `str \| None` | Reporting endpoint; **empty means the concern is off** |
-| `environment` | `str` | Environment tag |
-| `traces_sample_rate` | `float` | Performance-trace sampling |
-| `profiles_sample_rate` | `float` | Profiling sampling |
-| `debug` | `bool` | SDK debug mode |
+| Field | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `dsn` | `str \| None` | `None` | Reporting endpoint; **empty means the concern is off** |
+| `environment` | `str` | `""` | Environment tag; empty falls back to `settings.environment` |
+| `traces_sample_rate` | `float` | `0.0` | Performance-trace sampling |
+| `profiles_sample_rate` | `float` | `0.0` | Profiling sampling |
+| `debug` | `bool` | `False` | SDK debug mode |
 
 ### Narrowing a section
 
@@ -111,59 +119,87 @@ Your code never has to check whether metrics are configured.
 
 Error tracking is special: the section may exist while `dsn` is empty, which also counts as off.
 
-## With pydantic-settings
+## Shipped models
 
-Anything with the right attribute names works. A typical real service:
+Install the `settings` extra and the four sections plus the composite come as pydantic models,
+carrying the defaults above:
+
+```bash
+pip install "servicewright[settings]"
+```
 
 ```python
-from pydantic import BaseModel
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import SettingsConfigDict
+
+from servicewright.adapters.settings import BaseServiceSettings
 
 
-class LoggingSettings(BaseModel):
-    level: str = "INFO"
-    use_json: bool = True
+class Settings(BaseServiceSettings):
+    model_config = SettingsConfigDict(env_file=".env")
 
-
-class MetricsSettings(BaseModel):
-    enabled: bool = False
-    host: str = "0.0.0.0"
-    port: int = 9090
-    prefix: str | None = None
-
-
-class TracingSettings(BaseModel):
-    service_name: str = ""
-    collector_url: str | None = None
-    sample_ratio: float = 1.0
-    insecure: bool = True
-    enable_console_exporter: bool = False
-    excluded_urls: str | None = None
-
-
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_nested_delimiter="__", env_file=".env")
-
-    app_version: str = "0.0.0"
-    environment: str = "local"
-
-    logging: LoggingSettings = LoggingSettings()
-    metrics: MetricsSettings = MetricsSettings()
-    tracing: TracingSettings | None = None
-    error_tracking: None = None
-
-    def get_app_version(self) -> str:
-        return self.app_version
+    app_version: str = "1.4.0"
+    database_dsn: str
 ```
 
 ```bash
-LOGGING__LEVEL=DEBUG METRICS__PORT=9100 python main.py
+LOGGING__LEVEL=DEBUG TRACING__COLLECTOR_URL=otel:4317 python main.py
 ```
 
-!!! note
+`BaseServiceSettings` is a `pydantic_settings.BaseSettings` with `env_nested_delimiter="__"`, the
+four sections, `environment` (default `"local"`), `app_version` (default `"0.0.0"`) and a
+`get_app_version()` returning it. Your `model_config` is merged with the base one, so an
+`env_file` or an `env_prefix` of yours keeps the `__` nesting.
 
-    servicewright never imports pydantic. The example above works because the attributes line up,
-    not because of any integration.
+### What is on by default
+
+| Section | Default | Why |
+| --- | --- | --- |
+| `logging` | `LoggingSettings()` — `INFO`, JSON | you want logs |
+| `metrics` | `MetricsSettings()` — sink on, exposition server off | inert until something records |
+| `error_tracking` | `ErrorTrackingSettings()` — no `dsn`, so off | switches on from `ERROR_TRACKING__DSN` alone |
+| `tracing` | `None` | a present section installs a tracer provider; `TRACING__COLLECTOR_URL=...` creates it |
+
+A section typed `TracingSettings | None` is built from its nested variables the moment one is
+set, so `TRACING__COLLECTOR_URL=otel:4317` is all it takes to switch tracing on.
+
+A present section still activates its backend at bootstrap, which needs that backend's extra
+installed — `observability` for `structlog` and `otel`, `metrics` for `prometheus`. Otherwise set
+the section to `None` or select another backend in [`ObsConfig`](observability.md). The `settings`
+extra itself pulls in nothing but pydantic-settings.
+
+### Validation instead of silent fallbacks
+
+The models validate what the backends assume: the log level must be one of `LogLevelStr`
+(case-insensitively, so `LOGGING__LEVEL=debug` is fine while `warn` is a load-time error rather
+than a silent `INFO`), the sample ratios are bounded to `[0, 1]`, the metrics port to a port.
+
+### Disabling and narrowing
+
+Exactly as with a hand-written class: a section annotated `None` is off, a section model can be
+subclassed to narrow or extend it, and a default can be replaced:
+
+```python
+from typing import Literal
+
+from servicewright.adapters.settings import BaseServiceSettings, LoggingSettings, TracingSettings
+
+
+class StrictLogging(LoggingSettings):
+    level: Literal["INFO", "WARNING", "ERROR"] = "INFO"
+
+
+class Settings(BaseServiceSettings):
+    logging: StrictLogging = StrictLogging()
+    tracing: TracingSettings = TracingSettings(sample_ratio=0.1)  # on, sampling 10 %
+    metrics: None = None                                          # off
+```
+
+### Writing your own
+
+Anything with the right attribute names still works — a frozen dataclass, a plain class, a
+pydantic-settings class of your own; [Your first service](../getting-started/first-service.md)
+shows the smallest one. The kernel never imports pydantic: the models live in
+`servicewright.adapters.settings`, behind their extra, like every other binding.
 
 ## What is *not* in settings
 

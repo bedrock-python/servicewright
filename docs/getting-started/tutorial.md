@@ -43,7 +43,9 @@ class Settings:
 ```
 
 A section left as `None` disables its concern entirely. See [Settings](../concepts/settings.md)
-for the full field list of each one.
+for the full field list of each one. The dataclasses keep the tutorial self-contained; the
+`settings` extra ships the same sections as [pydantic-settings models](../concepts/settings.md#shipped-models)
+loaded from the environment.
 
 ## 2. Domain and container
 

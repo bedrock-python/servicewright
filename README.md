@@ -115,6 +115,7 @@ import-linter contract enforces the direction in CI: deleting `adapters/` leaves
 | `adapters.grpc` | gRPC entrypoint over grpc-server-kit, error mapping, health bridge | `grpc` |
 | `adapters.apscheduler4` / `apscheduler3` | Scheduler entrypoints with identical public surfaces | `apscheduler4` / `apscheduler3` |
 | `adapters.dishka` | dishka ⇄ core scope binding | `dishka` |
+| `adapters.settings` | pydantic-settings models of the settings contract | `settings` |
 | `adapters.observability` | prometheus / OpenTelemetry / Sentry / structlog / stdlib sinks | see below |
 | `adapters.warmers`, `adapters.health` | Redis / Postgres / Kafka warmers and checks | `redis`, `postgres`, `kafka` |
 | `servicewright.testing` | `FakeContainer`, `FakeEntrypoint`, `FakeScope`, `FakeSettings` | — |
@@ -128,6 +129,7 @@ import-linter contract enforces the direction in CI: deleting `adapters/` leaves
 | `grpc` | grpc-server-kit[reflection,channelz,health] | `GrpcEntrypoint`, error mapping, health bridge |
 | `apscheduler4` / `apscheduler3` | apscheduler 4.x / 3.x | `SchedulerEntrypoint` (one major per environment) |
 | `dishka` | dishka | `DishkaContainer` |
+| `settings` | pydantic-settings | `BaseServiceSettings` + the four section models, with the sinks' defaults |
 | `observability` | opentelemetry-sdk, OTLP gRPC exporter, structlog | `otel` tracing + `structlog` logging sinks |
 | `fastapi-tracing` | the above + opentelemetry-instrumentation-fastapi | HTTP request spans |
 | `metrics` | prometheus-client | `prometheus` metrics sink + `/system/metrics` |

@@ -2,7 +2,10 @@
 
 The section protocols are structural, and a mutable attribute matches
 invariantly — so a narrowed field (issue #8) can only be pinned by running a
-type checker over a reproduction and reading its verdict.
+type checker over a reproduction and reading its verdict. The same check is
+the one no consumer could write about a hand-transcribed model (issue #22):
+the shipped ``servicewright.adapters.settings`` models satisfy the protocol,
+narrowed or not.
 """
 
 from __future__ import annotations
@@ -97,6 +100,40 @@ class Logging:
 """,
 )
 
+_SHIPPED_MODELS = """\
+from servicewright import BaseServiceSettingsProtocol
+from servicewright.adapters.settings import BaseServiceSettings
+
+
+def takes_protocol(settings: BaseServiceSettingsProtocol) -> None: ...
+
+
+takes_protocol(BaseServiceSettings())
+"""
+
+_SHIPPED_MODELS_NARROWED = """\
+from typing import Literal
+
+from servicewright import BaseServiceSettingsProtocol
+from servicewright.adapters.settings import BaseServiceSettings, LoggingSettings, TracingSettings
+
+
+class StrictLogging(LoggingSettings):
+    level: Literal["INFO", "WARNING", "ERROR"] = "INFO"
+
+
+class Settings(BaseServiceSettings):
+    logging: StrictLogging = StrictLogging()
+    tracing: TracingSettings = TracingSettings(sample_ratio=0.1)
+    metrics: None = None
+
+
+def takes_protocol(settings: BaseServiceSettingsProtocol) -> None: ...
+
+
+takes_protocol(Settings())
+"""
+
 
 def _run_mypy(source: str, tmp_path: Path) -> subprocess.CompletedProcess[str]:
     snippet = tmp_path / "settings_snippet.py"
@@ -117,6 +154,8 @@ def _run_mypy(source: str, tmp_path: Path) -> subprocess.CompletedProcess[str]:
         pytest.param(_NARROWED_LOGGING, id="literal-log-level"),
         pytest.param(_NARROWED_ERROR_TRACKING, id="non-optional-dsn-and-literal-environment"),
         pytest.param(_WIDE_LOGGING, id="wide-str-log-level"),
+        pytest.param(_SHIPPED_MODELS, id="shipped-models"),
+        pytest.param(_SHIPPED_MODELS_NARROWED, id="shipped-models-narrowed-and-disabled"),
     ],
 )
 def test__settings_model__sections_declare_types_at_least_as_narrow__satisfies_the_protocol(

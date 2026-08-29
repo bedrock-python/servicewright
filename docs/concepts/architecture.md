@@ -96,6 +96,7 @@ preference — it is what makes `pip install servicewright` cost you nothing.
 | `adapters.grpc` | gRPC entrypoint, error mapping, health bridge | `grpc` |
 | `adapters.apscheduler4` / `apscheduler3` | Scheduler entrypoints with identical surfaces | `apscheduler4` / `apscheduler3` |
 | `adapters.dishka` | dishka ⇄ core scope binding | `dishka` |
+| `adapters.settings` | pydantic-settings models of the settings contract | `settings` |
 | `adapters.observability` | Prometheus / OTel / Sentry / structlog / stdlib sinks | varies |
 | `adapters.warmers`, `adapters.health` | Redis / Postgres / Kafka warmers and checks | `redis`, `postgres`, `kafka` |
 | `servicewright.testing` | In-memory doubles for your own tests | — |

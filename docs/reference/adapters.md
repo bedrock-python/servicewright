@@ -50,6 +50,16 @@ The public surface is identical to `apscheduler4`; only `ScheduledJob.coalesce` 
     options:
       heading_level: 3
 
+## `adapters.settings`
+
+The settings contract as pydantic-settings models — `BaseServiceSettings` and the four section
+models, with the defaults the backends fall back to. See
+[Settings](../concepts/settings.md#shipped-models).
+
+::: servicewright.adapters.settings
+    options:
+      heading_level: 3
+
 ## `adapters.observability`
 
 The author-facing sink ABCs and the five built-in backends — `PrometheusMetricsSink`, `OtelTracingSink`,

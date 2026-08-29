@@ -54,8 +54,8 @@ concrete framework binding.**
   contract surface, the `Host` loop-kernel, the lifecycle state machine, observability
   seam-specs/orchestration, warmup orchestration, the health registry.
 - **`adapters/`** holds the implementation: one subpackage per `(framework, major)` for
-  entrypoints, the DI binding, the concrete warmers, the concrete health-checkers, and the
-  add-on backend implementations.
+  entrypoints, the DI binding, the concrete warmers, the concrete health-checkers, the
+  add-on backend implementations, and the pydantic-settings models of the settings contract.
 
 **Dependency rule (CI-enforced via import-linter):** `adapters → core → stdlib`; never
 `core → adapters`; never `adapter → adapter`. **Litmus:** *deleting `adapters/` must leave
