@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.6.0...servicewright-v0.7.0) (2026-08-29)
+
+
+### Features
+
+* ship the settings contract as pydantic-settings models ([#23](https://github.com/bedrock-python/servicewright/issues/23)) ([55a62db](https://github.com/bedrock-python/servicewright/commit/55a62db8f99de796135407c40dcd1eb21933aead))
+
 ## [0.6.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.5.0...servicewright-v0.6.0) (2026-08-29)
 
 
