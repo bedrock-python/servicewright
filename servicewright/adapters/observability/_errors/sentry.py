@@ -71,6 +71,8 @@ class SentryErrorTrackingSink(ErrorTrackingSink):
             ``before_send_transaction``, ``traces_sampler``, ``integrations``,
             ``send_default_pii``, ... — used through instance injection::
 
+                from servicewright.adapters.observability import SentryErrorTrackingSink
+
                 ObservabilityManager(
                     ObsConfig(error_tracking="sentry"),
                     error_tracking=SentryErrorTrackingSink(ignore_errors=[DomainError]),

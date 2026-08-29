@@ -52,7 +52,9 @@ The public surface is identical to `apscheduler4`; only `ScheduledJob.coalesce` 
 
 ## `adapters.observability`
 
-The author-facing sink ABCs. Concrete backends are resolved lazily through the registry.
+The author-facing sink ABCs and the five built-in backends — `PrometheusMetricsSink`, `OtelTracingSink`,
+`SentryErrorTrackingSink`, `StructlogLoggingSink`, `StdlibLoggingSink` — importable from here (each needs
+its extra). Selected by name, they are resolved lazily through the registry.
 
 ::: servicewright.adapters.observability
     options:

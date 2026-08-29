@@ -97,13 +97,18 @@ a test double — pass a ready instance. It wins over the config name, and it is
 own `setup()` decides what to do with the settings.
 
 ```python
-ObservabilityManager(metrics=StatsdMetricsSink(host="127.0.0.1"))
+from servicewright.adapters.observability import PrometheusMetricsSink, SentryErrorTrackingSink
+
+ObservabilityManager(metrics=PrometheusMetricsSink(registry=my_registry))
 ObservabilityManager(error_tracking=SentryErrorTrackingSink(ignore_errors=[DomainError]))
+ObservabilityManager(metrics=StatsdMetricsSink(host="127.0.0.1"))   # a backend of your own
 ```
 
-The built-in backends take their options the same way — `PrometheusMetricsSink(registry=...)`,
-`SentryErrorTrackingSink(**sentry_sdk_init_kwargs)` — so instance injection is how a backend is
-tuned beyond what the settings section models.
+The built-in backends — `PrometheusMetricsSink`, `OtelTracingSink`, `SentryErrorTrackingSink`,
+`StructlogLoggingSink`, `StdlibLoggingSink` — are importable from
+`servicewright.adapters.observability`; each needs its extra, and importing one without it raises
+an `ImportError` naming the extra to install. They take their options at construction, so instance
+injection is how a backend is tuned beyond what the settings section models.
 
 ## Third-party backends
 
