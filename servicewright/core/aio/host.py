@@ -192,7 +192,10 @@ class Host[TSettings: "BaseServiceSettingsProtocol", TContainer: "DependencyCont
 
         self.spec.health.ready = True
         await self.spec.lifecycle.run_post_start_hooks(service_ctx.app_scope)
-        logger.info("Service ready", extra={"service": self.spec.service_name})
+        logger.info(
+            "Service ready",
+            extra={"service": self.spec.service_name, "event_loop": _loop_implementation()},
+        )
         return True
 
     def _abandon_startup(self, phase: str) -> bool:
@@ -353,6 +356,12 @@ class Host[TSettings: "BaseServiceSettingsProtocol", TContainer: "DependencyCont
         except Exception:
             logger.exception("Shutdown step failed", extra=extra)
         return []
+
+
+def _loop_implementation() -> str:
+    """The running loop's ``module.Class`` (``uvloop.Loop``, ``asyncio.unix_events._UnixSelectorEventLoop``)."""
+    loop_type = type(asyncio.get_running_loop())
+    return f"{loop_type.__module__}.{loop_type.__qualname__}"
 
 
 def _sole_cause(group: BaseExceptionGroup[Exception]) -> BaseException:

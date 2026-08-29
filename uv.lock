@@ -1954,7 +1954,7 @@ wheels = [
 
 [[package]]
 name = "servicewright"
-version = "0.1.0"
+version = "0.5.0"
 source = { editable = "." }
 
 [package.optional-dependencies]
@@ -1976,6 +1976,7 @@ all = [
     { name = "sqlalchemy", extra = ["asyncio"], marker = "extra == 'extra-13-servicewright-all' or extra != 'extra-13-servicewright-apscheduler3' or (extra == 'extra-13-servicewright-apscheduler3' and extra == 'extra-13-servicewright-apscheduler4')" },
     { name = "structlog" },
     { name = "uvicorn", extra = ["standard"], marker = "extra == 'extra-13-servicewright-all' or extra != 'extra-13-servicewright-apscheduler3' or (extra == 'extra-13-servicewright-apscheduler3' and extra == 'extra-13-servicewright-apscheduler4')" },
+    { name = "uvloop" },
 ]
 apscheduler3 = [
     { name = "apscheduler", version = "3.11.2", source = { registry = "https://pypi.org/simple" } },
@@ -2029,6 +2030,9 @@ redis = [
 sentry = [
     { name = "sentry-sdk" },
 ]
+uvloop = [
+    { name = "uvloop" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -2055,6 +2059,7 @@ dev = [
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "structlog" },
     { name = "uvicorn", extra = ["standard"] },
+    { name = "uvloop" },
 ]
 docs = [
     { name = "mkdocstrings-python" },
@@ -2080,6 +2085,7 @@ test = [
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "structlog" },
     { name = "uvicorn", extra = ["standard"] },
+    { name = "uvloop" },
 ]
 
 [package.metadata]
@@ -2100,13 +2106,14 @@ requires-dist = [
     { name = "redis", marker = "extra == 'redis'", specifier = ">=4.2.0" },
     { name = "sentry-sdk", marker = "extra == 'sentry'", specifier = ">=2.0.0,<3.0.0" },
     { name = "servicewright", extras = ["fastapi", "observability"], marker = "extra == 'fastapi-tracing'" },
-    { name = "servicewright", extras = ["observability", "metrics", "sentry", "redis", "postgres", "kafka", "fastapi", "fastapi-tracing", "grpc", "litestar", "apscheduler4", "dishka"], marker = "extra == 'all'" },
+    { name = "servicewright", extras = ["observability", "metrics", "sentry", "redis", "postgres", "kafka", "fastapi", "fastapi-tracing", "grpc", "litestar", "apscheduler4", "dishka", "uvloop"], marker = "extra == 'all'" },
     { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'postgres'", specifier = ">=2.0.0,<3.0.0" },
     { name = "structlog", marker = "extra == 'observability'", specifier = ">=25.5.0,<27.0.0" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'fastapi'", specifier = ">=0.34.0,<1.0.0" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'litestar'", specifier = ">=0.34.0,<1.0.0" },
+    { name = "uvloop", marker = "extra == 'uvloop'", specifier = ">=0.21.0" },
 ]
-provides-extras = ["observability", "fastapi-tracing", "metrics", "sentry", "redis", "postgres", "kafka", "fastapi", "grpc", "litestar", "apscheduler4", "apscheduler3", "dishka", "all"]
+provides-extras = ["observability", "fastapi-tracing", "metrics", "sentry", "redis", "postgres", "kafka", "fastapi", "grpc", "litestar", "apscheduler4", "apscheduler3", "dishka", "uvloop", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2133,6 +2140,7 @@ dev = [
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.0,<3.0.0" },
     { name = "structlog", specifier = ">=25.5.0,<27.0.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34.0,<1.0.0" },
+    { name = "uvloop", specifier = ">=0.21.0" },
 ]
 docs = [
     { name = "mkdocstrings-python", specifier = ">=2.0.3" },
@@ -2158,6 +2166,7 @@ test = [
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.0,<3.0.0" },
     { name = "structlog", specifier = ">=25.5.0,<27.0.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34.0,<1.0.0" },
+    { name = "uvloop", specifier = ">=0.21.0" },
 ]
 
 [[package]]
