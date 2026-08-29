@@ -2,11 +2,15 @@
 
 The section protocols are structural, and a mutable attribute matches
 invariantly — so a narrowed field (issue #8) can only be pinned by running a
-type checker over a reproduction and reading its verdict.
+type checker over a reproduction and reading its verdict. The same check is
+the one no consumer could write about a hand-transcribed model (issue #22):
+the shipped ``servicewright.adapters.settings`` models satisfy the protocol,
+narrowed or not.
 """
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -97,6 +101,42 @@ class Logging:
 """,
 )
 
+_SHIPPED_MODELS = """\
+from servicewright import BaseServiceSettingsProtocol
+from servicewright.adapters.settings import BaseServiceSettings
+
+
+def takes_protocol(settings: BaseServiceSettingsProtocol) -> None: ...
+
+
+takes_protocol(BaseServiceSettings())
+reveal_type(BaseServiceSettings().get_app_version())
+"""
+
+_SHIPPED_MODELS_NARROWED = """\
+from typing import Literal
+
+from servicewright import BaseServiceSettingsProtocol
+from servicewright.adapters.settings import BaseServiceSettings, LoggingSettings, TracingSettings
+
+
+class StrictLogging(LoggingSettings):
+    level: Literal["INFO", "WARNING", "ERROR"] = "INFO"
+
+
+class Settings(BaseServiceSettings):
+    logging: StrictLogging = StrictLogging()
+    tracing: TracingSettings = TracingSettings(sample_ratio=0.1)
+    metrics: None = None
+
+
+def takes_protocol(settings: BaseServiceSettingsProtocol) -> None: ...
+
+
+takes_protocol(Settings())
+reveal_type(Settings().get_app_version())
+"""
+
 
 def _run_mypy(source: str, tmp_path: Path) -> subprocess.CompletedProcess[str]:
     snippet = tmp_path / "settings_snippet.py"
@@ -117,6 +157,8 @@ def _run_mypy(source: str, tmp_path: Path) -> subprocess.CompletedProcess[str]:
         pytest.param(_NARROWED_LOGGING, id="literal-log-level"),
         pytest.param(_NARROWED_ERROR_TRACKING, id="non-optional-dsn-and-literal-environment"),
         pytest.param(_WIDE_LOGGING, id="wide-str-log-level"),
+        pytest.param(_SHIPPED_MODELS, id="shipped-models"),
+        pytest.param(_SHIPPED_MODELS_NARROWED, id="shipped-models-narrowed-and-disabled"),
     ],
 )
 def test__settings_model__sections_declare_types_at_least_as_narrow__satisfies_the_protocol(
@@ -129,6 +171,10 @@ def test__settings_model__sections_declare_types_at_least_as_narrow__satisfies_t
     # Assert
     assert result.returncode == 0, result.stdout
     assert "Success:" in result.stdout, result.stdout
+    # ``ignore_missing_imports`` types an unresolvable module as Any, which would satisfy the
+    # protocol vacuously; the shipped-model snippets reveal a member so that cannot pass silently.
+    if "reveal_type" in source:
+        assert re.search(r'Revealed type is "(builtins\.)?str"', result.stdout), result.stdout
 
 
 def test__settings_model__section_missing_a_declared_member__fails_the_protocol(tmp_path: Path) -> None:

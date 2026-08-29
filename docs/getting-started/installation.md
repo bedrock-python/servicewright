@@ -42,11 +42,12 @@ pip install "servicewright[fastapi,grpc,metrics,observability]"
 
 The `stdlib` logging backend needs no extra.
 
-### Infrastructure and DI
+### Infrastructure, DI and settings
 
 | Extra | Pulls in | Gives you |
 | --- | --- | --- |
 | `dishka` | dishka | [`DishkaContainer`](../adapters/dishka.md) |
+| `settings` | pydantic-settings | [`BaseServiceSettings`](../concepts/settings.md#shipped-models) and the four section models |
 | `redis` | redis | `RedisWarmer`, `RedisHealthCheck` |
 | `postgres` | `sqlalchemy[asyncio]` | `PostgresWarmer`, `PostgresHealthCheck` |
 | `kafka` | aiokafka | `KafkaProducerWarmer` |

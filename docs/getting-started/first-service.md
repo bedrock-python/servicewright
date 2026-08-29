@@ -32,7 +32,8 @@ see [Settings](../concepts/settings.md).
 !!! tip
 
     Any object with these attributes works: a `pydantic-settings` model, a dataclass, a plain
-    class. servicewright checks shape, not inheritance.
+    class. servicewright checks shape, not inheritance. The `settings` extra ships the shape as
+    ready-made models — see [Settings](../concepts/settings.md#shipped-models).
 
 ## 2. A dependency container
 

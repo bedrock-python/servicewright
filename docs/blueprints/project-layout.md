@@ -108,19 +108,9 @@ Four small files, each with one job.
 
     ```python
     from pydantic import BaseModel
-    from pydantic_settings import BaseSettings, SettingsConfigDict
+    from pydantic_settings import SettingsConfigDict
 
-
-    class LoggingSettings(BaseModel):
-        level: str = "INFO"
-        use_json: bool = True
-
-
-    class MetricsSettings(BaseModel):
-        enabled: bool = False
-        host: str = "0.0.0.0"
-        port: int = 9090
-        prefix: str | None = None
+    from servicewright.adapters.settings import BaseServiceSettings
 
 
     class HttpSettings(BaseModel):
@@ -128,21 +118,12 @@ Four small files, each with one job.
         port: int = 8000
 
 
-    class Settings(BaseSettings):
-        model_config = SettingsConfigDict(env_nested_delimiter="__", env_file=".env")
+    class Settings(BaseServiceSettings):
+        model_config = SettingsConfigDict(env_file=".env")
 
-        app_version: str = "0.0.0"
-        environment: str = "local"
         database_dsn: str
 
         http: HttpSettings = HttpSettings()
-        logging: LoggingSettings = LoggingSettings()
-        metrics: MetricsSettings = MetricsSettings()
-        tracing: None = None
-        error_tracking: None = None
-
-        def get_app_version(self) -> str:
-            return self.app_version
     ```
 
 === "container.py"
