@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.5.0...servicewright-v0.6.0) (2026-08-29)
+
+
+### Features
+
+* add run_sync() with event loop selection and a uvloop extra ([#20](https://github.com/bedrock-python/servicewright/issues/20)) ([c070211](https://github.com/bedrock-python/servicewright/commit/c070211940d4c0ce057daf3f303233c1b0ca509b)), closes [#19](https://github.com/bedrock-python/servicewright/issues/19)
+
 ## [0.5.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.4.0...servicewright-v0.5.0) (2026-08-29)
 
 
