@@ -50,6 +50,7 @@ The `stdlib` logging backend needs no extra.
 | `redis` | redis | `RedisWarmer`, `RedisHealthCheck` |
 | `postgres` | `sqlalchemy[asyncio]` | `PostgresWarmer`, `PostgresHealthCheck` |
 | `kafka` | aiokafka | `KafkaProducerWarmer` |
+| `uvloop` | uvloop | the uvloop event loop for [`run_sync(loop="auto")`](../concepts/lifecycle.md#event-loop) |
 
 ### Everything at once
 

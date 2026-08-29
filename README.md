@@ -43,6 +43,7 @@ pip install "servicewright[fastapi]"         # + FastAPI/uvicorn entrypoint
 pip install "servicewright[grpc]"            # + gRPC entrypoint
 pip install "servicewright[apscheduler4]"    # + cron/scheduler entrypoint
 pip install "servicewright[metrics,observability,sentry]"  # + prometheus, otel+structlog, sentry
+pip install "servicewright[uvloop]"          # + uvloop, picked up by run_sync(loop="auto")
 pip install "servicewright[all]"             # everything except the conflicting [apscheduler3]
 ```
 
@@ -51,9 +52,7 @@ pip install "servicewright[all]"             # everything except the conflicting
 ## Quick start — HTTP API + cron in ONE process
 
 ```python
-import asyncio
-
-from servicewright import AppSpec, ObsConfig, ObservabilityManager, Service, run
+from servicewright import AppSpec, ObsConfig, ObservabilityManager, Service, run_sync
 from servicewright.adapters.apscheduler4 import ScheduledJob, SchedulerEntrypoint
 from servicewright.adapters.fastapi import FastApiEntrypoint
 
@@ -75,7 +74,7 @@ def build_service() -> Service:
 
 
 if __name__ == "__main__":
-    asyncio.run(run(build_service(), Settings()))
+    run_sync(build_service(), Settings())   # loop="auto": uvloop when installed, asyncio otherwise
 ```
 
 Both entrypoints share one DI container, one observability setup and one graceful shutdown.
@@ -102,7 +101,7 @@ import-linter contract enforces the direction in CI: deleting `adapters/` leaves
 
 | Module | Responsibility | Extra |
 | --- | --- | --- |
-| `servicewright` | `AppSpec`, `Service`, `Host`, `run` — the public vocabulary | — |
+| `servicewright` | `AppSpec`, `Service`, `Host`, `run`, `run_sync` — the public vocabulary | — |
 | `core.contracts` | `Entrypoint`, `Plugin`, container/settings/health protocols | — |
 | `core.aio.host` | The lifecycle kernel: warmup → ready → serve → drain → cleanup | — |
 | `core.errors` | `ServiceError`, `ErrorKind`, RFC 9457 renderer + renderer seam | — |
@@ -134,6 +133,7 @@ import-linter contract enforces the direction in CI: deleting `adapters/` leaves
 | `metrics` | prometheus-client | `prometheus` metrics sink + `/system/metrics` |
 | `sentry` | sentry-sdk | `sentry` error-tracking sink |
 | `redis` / `postgres` / `kafka` | redis / sqlalchemy / aiokafka | matching warmers and health checks |
+| `uvloop` | uvloop | the uvloop event loop, picked by `run_sync(loop="auto" \| "uvloop")` |
 | `all` | everything except `apscheduler3` | the full runtime |
 
 ## Examples

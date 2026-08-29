@@ -215,9 +215,7 @@ Four small files, each with one job.
 ## Entry points as separate mains
 
 ```python title="api_main.py"
-import asyncio
-
-from servicewright import Service
+from servicewright import Service, run_sync
 
 from orders_service.runtime.entrypoints import build_http
 from orders_service.runtime.settings import Settings
@@ -227,7 +225,7 @@ from orders_service.runtime.spec import build_spec
 def main() -> None:
     settings = Settings()
     service = Service(build_spec(settings), entrypoints=[build_http(settings)])
-    asyncio.run(service.run(settings))
+    run_sync(service, settings)
 
 
 if __name__ == "__main__":
@@ -235,9 +233,7 @@ if __name__ == "__main__":
 ```
 
 ```python title="worker_main.py"
-import asyncio
-
-from servicewright import Service
+from servicewright import Service, run_sync
 
 from orders_service.runtime.entrypoints import build_cron, build_outbox_daemon
 from orders_service.runtime.settings import Settings
@@ -250,7 +246,7 @@ def main() -> None:
         build_spec(settings),
         entrypoints=[build_cron(settings), build_outbox_daemon(settings)],
     )
-    asyncio.run(service.run(settings))
+    run_sync(service, settings)
 
 
 if __name__ == "__main__":

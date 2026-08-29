@@ -58,6 +58,7 @@ from .core import (
     bind_context_values,
     collect_warmers,
     current_context,
+    event_loop_factory,
     get_context_value,
     is_safe_context_id,
     mask_private_error,
@@ -65,6 +66,7 @@ from .core import (
     propagation_metadata,
     register_sink,
     run,
+    run_sync,
     set_context_value,
     warmup_async,
 )
@@ -126,6 +128,7 @@ __all__ = [
     "bind_context_values",
     "collect_warmers",
     "current_context",
+    "event_loop_factory",
     "get_context_value",
     "is_safe_context_id",
     "mask_private_error",
@@ -133,6 +136,7 @@ __all__ = [
     "propagation_metadata",
     "register_sink",
     "run",
+    "run_sync",
     "set_context_value",
     "warmup_async",
 ]

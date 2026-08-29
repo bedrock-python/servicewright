@@ -124,7 +124,7 @@ async def sweep_loop(scope: UnitScopeProtocol, stop: asyncio.Event) -> None:
 ## 4. Assemble and run
 
 ```python
-from servicewright import AppSpec, DaemonEntrypoint, Service
+from servicewright import AppSpec, DaemonEntrypoint, Service, run_sync
 
 
 def build_container(settings: Settings) -> Container:
@@ -139,7 +139,7 @@ spec = AppSpec(
 service = Service(spec, entrypoints=[DaemonEntrypoint(sweep_loop)])
 
 if __name__ == "__main__":
-    asyncio.run(service.run(Settings()))
+    run_sync(service, Settings())
 ```
 
 Run it, let it tick a few times, then press ++ctrl+c++.

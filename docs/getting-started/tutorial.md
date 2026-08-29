@@ -165,9 +165,7 @@ sweep_job = ScheduledJob(
 ## 5. Put it together
 
 ```python title="main.py"
-import asyncio
-
-from servicewright import AppSpec, ObsConfig, ObservabilityManager, Service
+from servicewright import AppSpec, ObsConfig, ObservabilityManager, Service, run_sync
 from servicewright.adapters.apscheduler4 import SchedulerEntrypoint
 from servicewright.adapters.fastapi import FastApiEntrypoint, HttpConfig
 
@@ -193,7 +191,7 @@ def build_service() -> Service:
 
 
 if __name__ == "__main__":
-    asyncio.run(build_service().run(Settings()))
+    run_sync(build_service(), Settings())
 ```
 
 ```bash

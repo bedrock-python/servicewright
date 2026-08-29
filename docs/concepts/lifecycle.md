@@ -105,6 +105,34 @@ in the first place.
     otherwise the kubelet sends `SIGKILL` in the middle of your drain. See
     [Kubernetes](../operations/kubernetes.md).
 
+## Event loop
+
+The Host runs on whatever loop it is started in; it never creates one. `run_sync` is the entry
+point that does, through `asyncio.run(..., loop_factory=...)`:
+
+```python
+from servicewright import run_sync
+
+if __name__ == "__main__":
+    run_sync(service, settings)                  # loop="auto": uvloop when installed, asyncio otherwise
+    run_sync(service, settings, loop="uvloop")   # uvloop, or an ImportError naming the extra
+    run_sync(service, settings, loop="asyncio")  # asyncio's default loop, whatever is installed
+```
+
+`pip install "servicewright[uvloop]"` brings uvloop in on its own; the `fastapi` and `litestar`
+extras already carry it through `uvicorn[standard]`, but nothing switches to it until `run_sync`
+does — uvicorn's own `loop=` option never applies here, because the entrypoints drive uvicorn
+inside the Host's loop. No event loop policy is installed (they are deprecated in Python 3.14).
+
+Embedding — a test, a custom runner — keeps `asyncio.run(service.run(settings))` or any loop of
+its own; `event_loop_factory("auto")` returns the factory `run_sync` would have used.
+
+The readiness line says which loop the service actually runs on:
+
+```
+Service ready  service=orders event_loop=uvloop.Loop
+```
+
 ## Signals
 
 The first `SIGINT` or `SIGTERM` sets the stop event and starts the graceful sequence above.

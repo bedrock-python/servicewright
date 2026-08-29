@@ -60,9 +60,7 @@ Python 3.12+. See [Installation](getting-started/installation.md) for the full l
 ## A first taste
 
 ```python
-import asyncio
-
-from servicewright import AppSpec, Service
+from servicewright import AppSpec, Service, run_sync
 from servicewright.adapters.fastapi import FastApiEntrypoint, HttpConfig
 
 
@@ -75,7 +73,7 @@ service = Service(spec, entrypoints=[
     FastApiEntrypoint(config=HttpConfig(port=8000), routers=(router,)),
 ])
 
-asyncio.run(service.run(settings))
+run_sync(service, settings)
 ```
 
 You now have a service that:
