@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.4.0...servicewright-v0.5.0) (2026-08-29)
+
+
+### Features
+
+* **observability:** make the concrete sinks importable from servicewright.adapters.observability ([#17](https://github.com/bedrock-python/servicewright/issues/17)) ([0a04252](https://github.com/bedrock-python/servicewright/commit/0a04252938654f14dbfc451525c460a628845f14)), closes [#16](https://github.com/bedrock-python/servicewright/issues/16)
+
 ## [0.4.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.3.0...servicewright-v0.4.0) (2026-08-28)
 
 

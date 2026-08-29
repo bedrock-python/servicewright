@@ -1,6 +1,6 @@
 [project]
 name = "servicewright"
-version = "0.4.0"
+version = "0.5.0"
 description = "Batteries-optional microservice runtime: lifecycle, observability, warmup and gRPC/FastAPI transport entities to build services fast"
 readme = "README.md"
 requires-python = ">=3.12"
