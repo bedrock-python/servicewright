@@ -1,7 +1,7 @@
 """Prometheus metrics backend: instrument factory + optional exposition.
 
 Implements the generic instrument seam (:class:`CounterProtocol` /
-:class:`HistogramProtocol`): transport adapters compose their recorders from
+:class:`HistogramProtocol` / :class:`GaugeProtocol`): transport adapters compose their recorders from
 these instruments and own their metric names — this module knows nothing about
 gRPC, HTTP or any other transport.
 
@@ -22,7 +22,7 @@ from wsgiref.simple_server import make_server
 from ..base import MetricsSink
 
 try:
-    from prometheus_client import REGISTRY, Counter, Histogram, make_wsgi_app
+    from prometheus_client import REGISTRY, Counter, Gauge, Histogram, make_wsgi_app
     from prometheus_client.exposition import _SilentHandler
 except ImportError as exc:  # pragma: no cover - exercised only without the extra
     raise ImportError("Prometheus metrics require servicewright[metrics]; install it.") from exc
@@ -61,6 +61,28 @@ class PrometheusHistogram:
         """Record one observation for the given label values."""
         target = self._histogram.labels(**labels) if labels else self._histogram
         target.observe(value)
+
+
+class PrometheusGauge:
+    """Gauge instrument over a ``prometheus_client.Gauge``."""
+
+    def __init__(self, gauge: Any) -> None:
+        self._gauge = gauge
+
+    def set(self, value: float, **labels: str) -> None:
+        """Set the value for the given label values."""
+        target = self._gauge.labels(**labels) if labels else self._gauge
+        target.set(value)
+
+    def inc(self, amount: float = 1.0, **labels: str) -> None:
+        """Increment by ``amount`` for the given label values."""
+        target = self._gauge.labels(**labels) if labels else self._gauge
+        target.inc(amount)
+
+    def dec(self, amount: float = 1.0, **labels: str) -> None:
+        """Decrement by ``amount`` for the given label values."""
+        target = self._gauge.labels(**labels) if labels else self._gauge
+        target.dec(amount)
 
 
 # Instruments are cached per REGISTRY, not per sink: a collector's name is
@@ -181,5 +203,15 @@ class PrometheusMetricsSink(MetricsSink):
             raise TypeError(f"Metric {name!r} is already registered as a different instrument type")
         return instrument
 
+    def gauge(self, name: str, description: str, label_names: tuple[str, ...] = ()) -> PrometheusGauge:
+        """Mint (or reuse) a gauge registered under ``name``."""
+        if name not in self._instruments:
+            kwargs = {"registry": self._registry} if self._registry is not None else {}
+            self._instruments[name] = PrometheusGauge(Gauge(name, description, list(label_names), **kwargs))
+        instrument = self._instruments[name]
+        if not isinstance(instrument, PrometheusGauge):
+            raise TypeError(f"Metric {name!r} is already registered as a different instrument type")
+        return instrument
 
-__all__ = ["PrometheusCounter", "PrometheusHistogram", "PrometheusMetricsSink"]
+
+__all__ = ["PrometheusCounter", "PrometheusGauge", "PrometheusHistogram", "PrometheusMetricsSink"]

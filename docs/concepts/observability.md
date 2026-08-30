@@ -126,7 +126,7 @@ The target is imported lazily, so registering costs nothing until the backend is
 
 ## Metrics are instruments, not metric names
 
-Backends mint counters and histograms. They know nothing about HTTP or gRPC.
+Backends mint counters, histograms and gauges. They know nothing about HTTP, gRPC or schedulers.
 
 Metric **names** live with their owner — the transport adapter that records them:
 

@@ -58,6 +58,19 @@ class NullHistogram:
         """Discard the observation."""
 
 
+class NullGauge:
+    """No-op gauge instrument."""
+
+    def set(self, value: float, **labels: str) -> None:
+        """Discard the value."""
+
+    def inc(self, amount: float = 1.0, **labels: str) -> None:
+        """Discard the increment."""
+
+    def dec(self, amount: float = 1.0, **labels: str) -> None:
+        """Discard the decrement."""
+
+
 class NullErrorReporter:
     """No-op error reporter."""
 
@@ -101,6 +114,10 @@ class NullMetricsSink:
     ) -> NullHistogram:
         """Return a no-op histogram."""
         return NullHistogram()
+
+    def gauge(self, name: str, description: str, label_names: tuple[str, ...] = ()) -> NullGauge:
+        """Return a no-op gauge."""
+        return NullGauge()
 
 
 class NullTracingSink:
@@ -154,6 +171,7 @@ __all__ = [
     "NullCounter",
     "NullErrorReporter",
     "NullErrorTrackingSink",
+    "NullGauge",
     "NullHistogram",
     "NullLoggingSink",
     "NullMetricsSink",

@@ -52,7 +52,8 @@ to a failure someone has already had.
 - [ ] Sentry `environment` and `release` are set — the release comes from `get_app_version()`.
 - [ ] Metrics are actually scraped: either `/system/metrics` on the API port, or the standalone
       server, and the scrape config matches.
-- [ ] Dashboards use the frozen metric names (`grpc_requests_total`, HTTP instrumentator metrics),
+- [ ] Dashboards use the frozen metric names (`grpc_requests_total`, `scheduler_job_runs_total`, HTTP
+      instrumentator metrics),
       not names you invented in a recorder and might rename.
 
 ## Security

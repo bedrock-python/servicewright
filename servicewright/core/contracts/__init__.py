@@ -17,6 +17,7 @@ from .health import HealthCheckerProtocol as HealthCheckerProtocol
 from .lifecycle import LifecycleHookProtocol as LifecycleHookProtocol
 from .observability import CounterProtocol as CounterProtocol
 from .observability import ErrorReporterProtocol as ErrorReporterProtocol
+from .observability import GaugeProtocol as GaugeProtocol
 from .observability import HistogramProtocol as HistogramProtocol
 from .observability import Masker as Masker
 from .observability import Redactor as Redactor
@@ -34,6 +35,7 @@ __all__ = [
     "DependencyContainerProtocol",
     "Entrypoint",
     "ErrorReporterProtocol",
+    "GaugeProtocol",
     "HealthCheckerProtocol",
     "HistogramProtocol",
     "LifecycleHookProtocol",

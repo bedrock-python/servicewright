@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from ...core.contracts.observability import (
         CounterProtocol,
         ErrorReporterProtocol,
+        GaugeProtocol,
         HistogramProtocol,
         TracerProtocol,
     )
@@ -61,6 +62,11 @@ class MetricsSink(ABC):
         buckets: tuple[float, ...] | None = None,
     ) -> HistogramProtocol:
         """Mint (or reuse) a histogram instrument (``None`` buckets = backend default)."""
+        ...
+
+    @abstractmethod
+    def gauge(self, name: str, description: str, label_names: tuple[str, ...] = ()) -> GaugeProtocol:
+        """Mint (or reuse) a gauge instrument."""
         ...
 
 

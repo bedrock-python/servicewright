@@ -98,6 +98,19 @@ def test__scheduler_entrypoint__public_methods__are_identical() -> None:
     assert _public_methods(e3) == _public_methods(e4)
 
 
+def test__scheduler_plugin__init_signature__is_identical() -> None:
+    p3 = _classdef(_A3 / "entrypoint.py", "SchedulerPlugin")
+    p4 = _classdef(_A4 / "entrypoint.py", "SchedulerPlugin")
+    assert _init_params(p3) == _init_params(p4)
+
+
+def test__scheduler_metrics_module__is_the_same_code_in_both_adapters() -> None:
+    # The recorder touches no SDK, so the two copies are not merely
+    # surface-compatible but identical: the frozen metric names and the outcome
+    # vocabulary are one wire contract, whichever APScheduler major serves it.
+    assert ast.dump(_module(_A3 / "metrics.py")) == ast.dump(_module(_A4 / "metrics.py"))
+
+
 def test__scheduler_plugin__present_in_both_adapters__has_the_same_name() -> None:
     assert _classdef(_A3 / "entrypoint.py", "SchedulerPlugin").name == "SchedulerPlugin"
     assert _classdef(_A4 / "entrypoint.py", "SchedulerPlugin").name == "SchedulerPlugin"

@@ -86,6 +86,12 @@ class _Histogram:
     def observe(self, value: float, **labels: str) -> None: ...
 
 
+class _Gauge:
+    def set(self, value: float, **labels: str) -> None: ...
+    def inc(self, amount: float = 1.0, **labels: str) -> None: ...
+    def dec(self, amount: float = 1.0, **labels: str) -> None: ...
+
+
 class _Reporter:
     def capture_exception(self, error: Exception) -> None: ...
     def add_breadcrumb(self, message: str, **kwargs: object) -> None: ...
@@ -108,6 +114,9 @@ class _MetricsSink(MetricsSink):
         buckets: tuple[float, ...] | None = None,
     ) -> _Histogram:
         return _Histogram()
+
+    def gauge(self, name: str, description: str, label_names: tuple[str, ...] = ()) -> _Gauge:
+        return _Gauge()
 
 
 class _TracingSink(TracingSink):
@@ -145,6 +154,31 @@ def test__metrics_sink__defaults_not_overridden__are_no_ops() -> None:
     sink = _MetricsSink()
     sink.counter("x_total", "desc", ("a",)).inc(a="1")
     sink.histogram("x_seconds", "desc", ("a",)).observe(0.1, a="1")
+    sink.gauge("x_in_progress", "desc", ("a",)).set(1.0, a="1")
+
+
+def test__metrics_sink__gauge_not_implemented__cannot_be_instantiated() -> None:
+    """A backend written before gauges existed fails loudly at construction, not silently at use."""
+
+    class _CounterOnlySink(MetricsSink):
+        backend = "legacy"
+
+        def setup(self, ctx: ObsSetupContext) -> None: ...
+        def shutdown(self) -> None: ...
+        def counter(self, name: str, description: str, label_names: tuple[str, ...] = ()) -> _Counter:
+            return _Counter()
+
+        def histogram(
+            self,
+            name: str,
+            description: str,
+            label_names: tuple[str, ...] = (),
+            buckets: tuple[float, ...] | None = None,
+        ) -> _Histogram:
+            return _Histogram()
+
+    with pytest.raises(TypeError, match="gauge"):
+        _CounterOnlySink()  # type: ignore[abstract]
 
 
 def test__tracing_sink__instrument_fastapi_not_overridden__is_a_no_op() -> None:
