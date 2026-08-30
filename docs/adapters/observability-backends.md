@@ -192,6 +192,9 @@ class StatsdMetricsSink(MetricsSink):
 
     def histogram(self, name, description, label_names=(), buckets=None):
         return StatsdHistogram(self._client, name)
+
+    def gauge(self, name, description, label_names=()):
+        return StatsdGauge(self._client, name)
 ```
 
 Then either register it by name:
@@ -217,7 +220,7 @@ arguments.
 
 | ABC | Must implement |
 | --- | --- |
-| `MetricsSink` | `setup`, `shutdown`, `counter`, `histogram` |
+| `MetricsSink` | `setup`, `shutdown`, `counter`, `histogram`, `gauge` |
 | `TracingSink` | `setup`, `shutdown`, `tracer` (+ optional `instrument_fastapi`) |
 | `ErrorTrackingSink` | `setup`, `shutdown`, `reporter` |
 | `LoggingSink` | `setup`, `shutdown` |
@@ -231,6 +234,12 @@ class CounterProtocol(Protocol):
 
 class HistogramProtocol(Protocol):
     def observe(self, value: float, **labels: str) -> None: ...
+
+
+class GaugeProtocol(Protocol):
+    def set(self, value: float, **labels: str) -> None: ...
+    def inc(self, amount: float = 1.0, **labels: str) -> None: ...
+    def dec(self, amount: float = 1.0, **labels: str) -> None: ...
 ```
 
 Two rules worth honouring:
@@ -250,6 +259,10 @@ from servicewright.adapters.grpc import GrpcServerMetricsRecorder
 recorder = GrpcServerMetricsRecorder(ctx.observability.metrics, prefix="myapp")
 recorder.record_request(service, method, status, grpc_code, duration)
 ```
+
+The scheduler's [`SchedulerJobMetricsRecorder`](scheduler.md#metrics) is the same shape, plus a
+`track(job_id)` context manager that accounts a whole run — in-progress up and down, duration,
+outcome from the exception — around its body.
 
 Doing your own is the same shape:
 

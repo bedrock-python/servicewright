@@ -17,6 +17,7 @@ from servicewright.adapters.observability._logging.structlog import StructlogLog
 from servicewright.adapters.observability._metrics import prometheus as prometheus_mod
 from servicewright.adapters.observability._metrics.prometheus import (
     PrometheusCounter,
+    PrometheusGauge,
     PrometheusHistogram,
     PrometheusMetricsSink,
 )
@@ -140,6 +141,34 @@ def test__prometheus_sink__name_reused_for_another_type__raises() -> None:
     sink.counter("dual_total", "Counter first")
     with pytest.raises(TypeError, match="different instrument type"):
         sink.histogram("dual_total", "Histogram second")
+    with pytest.raises(TypeError, match="different instrument type"):
+        sink.gauge("dual_total", "Gauge third")
+
+
+def test__prometheus_gauge__set_inc_dec__land_in_the_registry() -> None:
+    registry = CollectorRegistry()
+    sink = PrometheusMetricsSink(registry=registry)
+
+    gauge = sink.gauge("jobs_in_progress", "Runs in progress", ("job_id",))
+    gauge.inc(job_id="sweep")
+    gauge.inc(2.0, job_id="sweep")
+    gauge.dec(job_id="sweep")
+    assert registry.get_sample_value("jobs_in_progress", {"job_id": "sweep"}) == 2.0
+
+    gauge.set(1_700_000_000.0, job_id="sweep")
+    assert registry.get_sample_value("jobs_in_progress", {"job_id": "sweep"}) == 1_700_000_000.0
+
+    unlabeled = sink.gauge("plain_level", "No labels")
+    unlabeled.set(3.0)
+    unlabeled.dec(0.5)
+    assert registry.get_sample_value("plain_level", {}) == 2.5
+
+
+def test__prometheus_sink__same_gauge_requested_twice__returns_the_same_instrument() -> None:
+    sink = PrometheusMetricsSink(registry=CollectorRegistry())
+    first = sink.gauge("level", "Level", ("a",))
+    assert sink.gauge("level", "Level", ("a",)) is first
+    assert isinstance(first, PrometheusGauge)
 
 
 def test__prometheus_sink__exposition_enabled__starts_and_stops_the_server(monkeypatch: pytest.MonkeyPatch) -> None:

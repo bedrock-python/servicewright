@@ -85,6 +85,57 @@ Successful runs log `Job execution completed` with the same fields.
 If you *want* a failing job to stop the service, raise out of a `pre_start` hook after checking
 whatever invariant matters, or use a [one-shot entrypoint](daemon-and-oneshot.md) instead.
 
+## Metrics
+
+```python
+SchedulerEntrypoint(jobs=[...], enable_metrics=True)
+```
+
+Records every run through whatever metrics backend the app configured — a null object when
+metrics are off, so the flag is always safe:
+
+| Metric | Type | Labels |
+| --- | --- | --- |
+| `scheduler_job_runs_total` | counter | `job_id`, `outcome`, `error_kind` |
+| `scheduler_job_duration_seconds` | histogram | `job_id` |
+| `scheduler_job_last_success_timestamp_seconds` | gauge | `job_id` |
+| `scheduler_job_in_progress` | gauge | `job_id` |
+
+`outcome` is `ok`, `error` or `cancelled` (the Host drained or stopped the scheduler mid-run).
+`error_kind` refines `error` with the library's own taxonomy: the `ErrorKind` of a
+[`ServiceError`](../concepts/errors.md) — `validation`, `not_found`, ... — or `unexpected` for
+any other exception, and `""` when the run did not fail. A job refused by a business rule and a
+lost database connection are therefore different series, so an error-rate alert can ignore the
+former:
+
+```promql
+sum by (job_id) (rate(scheduler_job_runs_total{outcome="error", error_kind="unexpected"}[15m])) > 0
+```
+
+Two details the recorder gets right so that you do not have to:
+
+- **The last-success timestamp moves only on `ok`.** A job that fails every time goes stale,
+  which is exactly what a staleness alert exists to catch:
+
+  ```promql
+  time() - scheduler_job_last_success_timestamp_seconds{job_id="mailout"} > 2 * 3600
+  ```
+
+  The gauge is process-local: after a restart the series is absent until the first success, so
+  pair the rule with `absent(...)` or an `or vector(0)` fallback.
+
+- **`in_progress` is released on every exit path**, error and cancellation included, so a
+  "job is stuck" rule (`scheduler_job_in_progress > 0` for longer than the job should take)
+  cannot become permanently true.
+
+Cancelled runs are counted but not sampled into the duration histogram — they did not finish.
+Durations bucket up to 1800 s (`DEFAULT_SCHEDULER_BUCKETS`), since jobs span orders of magnitude.
+Prefix everything with `metrics_prefix="myapp"`. Both APScheduler adapters record identically.
+
+The recorder is public: compose `SchedulerJobMetricsRecorder(ctx.observability.metrics)` in an
+entrypoint of your own, or reuse `classify_outcome` to keep the same vocabulary in a recorder of
+yours — see [Metrics recorders](observability-backends.md#metrics-recorders).
+
 ## Shutdown
 
 `drain(grace)` **pauses every schedule** so no new job fires, then waits for the runs already in
@@ -105,7 +156,8 @@ transaction.
 ## APScheduler 3 vs 4
 
 Both adapters expose an **identical** public surface — `SchedulerEntrypoint`, `SchedulerPlugin`,
-`ScheduledJob`, `SchedulerError`, `DuplicateScheduleError` — enforced by a conformance test. A
+`ScheduledJob`, `SchedulerJobMetricsRecorder`, `SchedulerError`, `DuplicateScheduleError` —
+enforced by a conformance test. A
 migration is one import line:
 
 ```python

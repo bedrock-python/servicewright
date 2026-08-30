@@ -19,7 +19,9 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
 from servicewright import AppSpec, Entrypoint, Plugin, Service
+from servicewright.core.errors import ErrorKind, ServiceError
 from servicewright.core.health import HealthRegistry
+from servicewright.core.observability import ObservabilityManager
 from servicewright.core.spec import BootstrapContext, ServiceContext
 from servicewright.testing import FakeContainer, FakeScope, FakeSettings
 
@@ -811,3 +813,187 @@ async def test__scheduler_plugin__driven_by_a_service__completes_the_lifecycle(
 
     assert patched_scheduler.instances[0].exited is True
     assert spec.health.ready is False
+
+
+# --------------------------------------------------------------------------- #
+# Metrics — enable_metrics wires SchedulerJobMetricsRecorder onto the app's sink
+# --------------------------------------------------------------------------- #
+class _RecordingInstrument:
+    """Counter / histogram / gauge double that keeps every call."""
+
+    def __init__(self, name: str, log: list[tuple[str, str, Any, dict[str, str]]]) -> None:
+        self._name = name
+        self._log = log
+
+    def inc(self, amount: float = 1.0, **labels: str) -> None:
+        self._log.append((self._name, "inc", amount, labels))
+
+    def dec(self, amount: float = 1.0, **labels: str) -> None:
+        self._log.append((self._name, "dec", amount, labels))
+
+    def set(self, value: float, **labels: str) -> None:
+        self._log.append((self._name, "set", value, labels))
+
+    def observe(self, value: float, **labels: str) -> None:
+        self._log.append((self._name, "observe", value, labels))
+
+
+class _RecordingMetricsSink:
+    """In-memory ``MetricsSinkProtocol``: one recording instrument per name."""
+
+    backend = "recording"
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, Any, dict[str, str]]] = []
+        self.names: list[str] = []
+
+    def setup(self, ctx: Any) -> None:
+        return None
+
+    def shutdown(self) -> None:
+        return None
+
+    def _instrument(self, name: str) -> _RecordingInstrument:
+        self.names.append(name)
+        return _RecordingInstrument(name, self.calls)
+
+    def counter(self, name: str, description: str, label_names: tuple[str, ...] = ()) -> _RecordingInstrument:
+        return self._instrument(name)
+
+    def histogram(
+        self,
+        name: str,
+        description: str,
+        label_names: tuple[str, ...] = (),
+        buckets: tuple[float, ...] | None = None,
+    ) -> _RecordingInstrument:
+        return self._instrument(name)
+
+    def gauge(self, name: str, description: str, label_names: tuple[str, ...] = ()) -> _RecordingInstrument:
+        return self._instrument(name)
+
+    def events(self, name: str) -> list[tuple[str, Any, dict[str, str]]]:
+        return [(op, value, labels) for n, op, value, labels in self.calls if n == name]
+
+
+def _metrics_ctx(container: FakeContainer, sink: _RecordingMetricsSink) -> ServiceContext:
+    manager = ObservabilityManager(metrics=sink)  # type: ignore[arg-type]
+    manager.configure(FakeSettings(), service_name="svc")
+    bootstrap = BootstrapContext(
+        settings=FakeSettings(),
+        service_name="svc",
+        container=container,
+        lifecycle=object(),  # type: ignore[arg-type]
+    )
+    return ServiceContext(bootstrap=bootstrap, app_scope=FakeScope(), health=HealthRegistry(), observability=manager)
+
+
+async def test__scheduler_dispatch__metrics_enabled_and_job_succeeds__records_the_run_on_the_app_sink() -> None:
+    sink = _RecordingMetricsSink()
+    ep = SchedulerEntrypoint(jobs=[_job("sweep", _noop)], enable_metrics=True)
+    await ep.bind(_metrics_ctx(FakeContainer(), sink))
+
+    await ep._dispatch("sweep")
+
+    assert sink.events("scheduler_job_runs_total") == [
+        ("inc", 1.0, {"job_id": "sweep", "outcome": "ok", "error_kind": ""}),
+    ]
+    assert [op for op, _, _ in sink.events("scheduler_job_in_progress")] == ["inc", "dec"]
+    assert len(sink.events("scheduler_job_duration_seconds")) == 1
+    assert [op for op, _, _ in sink.events("scheduler_job_last_success_timestamp_seconds")] == ["set"]
+
+
+async def test__scheduler_dispatch__metrics_enabled_and_job_fails__records_error_and_releases_in_progress() -> None:
+    sink = _RecordingMetricsSink()
+
+    async def failing(_scope: Any) -> None:
+        raise ConnectionError("db gone")
+
+    ep = SchedulerEntrypoint(jobs=[_job("sweep", failing)], enable_metrics=True)
+    await ep.bind(_metrics_ctx(FakeContainer(), sink))
+
+    await ep._dispatch("sweep")  # a failing job never propagates out of the scheduler
+
+    assert sink.events("scheduler_job_runs_total") == [
+        ("inc", 1.0, {"job_id": "sweep", "outcome": "error", "error_kind": "unexpected"}),
+    ]
+    assert [op for op, _, _ in sink.events("scheduler_job_in_progress")] == ["inc", "dec"]
+    assert sink.events("scheduler_job_last_success_timestamp_seconds") == []
+
+
+async def test__scheduler_dispatch__metrics_enabled_and_job_raises_service_error__error_kind_is_its_kind() -> None:
+    sink = _RecordingMetricsSink()
+
+    async def refused(_scope: Any) -> None:
+        raise ServiceError("nothing to reconcile", kind=ErrorKind.PRECONDITION_FAILED)
+
+    ep = SchedulerEntrypoint(jobs=[_job("reconcile", refused)], enable_metrics=True)
+    await ep.bind(_metrics_ctx(FakeContainer(), sink))
+
+    await ep._dispatch("reconcile")
+
+    assert sink.events("scheduler_job_runs_total") == [
+        ("inc", 1.0, {"job_id": "reconcile", "outcome": "error", "error_kind": "precondition_failed"}),
+    ]
+
+
+async def test__scheduler_dispatch__metrics_enabled_and_job_cancelled__records_cancelled_and_reraises() -> None:
+    sink = _RecordingMetricsSink()
+
+    async def cancelled(_scope: Any) -> None:
+        raise asyncio.CancelledError
+
+    ep = SchedulerEntrypoint(jobs=[_job("slow", cancelled)], enable_metrics=True)
+    await ep.bind(_metrics_ctx(FakeContainer(), sink))
+
+    with pytest.raises(asyncio.CancelledError):
+        await ep._dispatch("slow")
+
+    assert sink.events("scheduler_job_runs_total") == [
+        ("inc", 1.0, {"job_id": "slow", "outcome": "cancelled", "error_kind": ""}),
+    ]
+    assert [op for op, _, _ in sink.events("scheduler_job_in_progress")] == ["inc", "dec"]
+    assert sink.events("scheduler_job_duration_seconds") == []
+
+
+async def test__scheduler_dispatch__metrics_disabled__never_touches_the_app_sink() -> None:
+    sink = _RecordingMetricsSink()
+    ep = SchedulerEntrypoint(jobs=[_job("sweep", _noop)])
+    await ep.bind(_metrics_ctx(FakeContainer(), sink))
+
+    await ep._dispatch("sweep")
+
+    assert sink.names == []
+    assert sink.calls == []
+
+
+async def test__scheduler_bind__metrics_prefix_given__prefixes_every_metric_name() -> None:
+    sink = _RecordingMetricsSink()
+    ep = SchedulerEntrypoint(jobs=[_job("sweep", _noop)], enable_metrics=True, metrics_prefix="myapp")
+
+    await ep.bind(_metrics_ctx(FakeContainer(), sink))
+
+    assert sorted(sink.names) == [
+        "myapp_scheduler_job_duration_seconds",
+        "myapp_scheduler_job_in_progress",
+        "myapp_scheduler_job_last_success_timestamp_seconds",
+        "myapp_scheduler_job_runs_total",
+    ]
+
+
+async def test__scheduler_bind__invalid_metrics_prefix__fails_before_the_scheduler_is_entered(
+    patched_scheduler: type[_FakeAsyncScheduler],
+) -> None:
+    ep = SchedulerEntrypoint(jobs=[_job("sweep", _noop)], enable_metrics=True, metrics_prefix="my-app")
+
+    with pytest.raises(ValueError, match="Invalid metric prefix"):
+        await ep.bind(_metrics_ctx(FakeContainer(), _RecordingMetricsSink()))
+
+    assert patched_scheduler.instances == []
+
+
+def test__scheduler_plugin__metrics_flags__are_forwarded_to_the_entrypoint() -> None:
+    plugin = SchedulerPlugin(jobs=[_job("sweep", _noop)], enable_metrics=True, metrics_prefix="myapp")
+
+    assert plugin.entrypoint._enable_metrics is True
+    assert plugin.entrypoint._metrics_prefix == "myapp"

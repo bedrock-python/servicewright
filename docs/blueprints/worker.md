@@ -188,7 +188,7 @@ def main() -> None:
     service = Service(
         build_spec(settings),
         entrypoints=[
-            SchedulerEntrypoint(jobs=JOBS),
+            SchedulerEntrypoint(jobs=JOBS, enable_metrics=True),
             DaemonEntrypoint(publish_outbox, kind="outbox"),
             OrdersConsumerEntrypoint(settings.kafka.brokers, "orders.events", "orders-worker"),
         ],
@@ -222,7 +222,7 @@ ports: [{ containerPort: 9090, name: metrics }]
 
 ```python
 entrypoints=[
-    SchedulerEntrypoint(jobs=JOBS),
+    SchedulerEntrypoint(jobs=JOBS, enable_metrics=True),
     FastApiEntrypoint(config=HttpConfig(port=8080)),   # health + metrics only
 ]
 ```

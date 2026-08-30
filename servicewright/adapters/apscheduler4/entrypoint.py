@@ -58,6 +58,7 @@ from ...core.contracts import ScopedEntrypoint
 from ._imports import AsyncScheduler, RunState
 from .config import ScheduledJob
 from .exceptions import DuplicateScheduleError
+from .metrics import SchedulerJobMetricsRecorder
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -77,6 +78,12 @@ class SchedulerEntrypoint(ScopedEntrypoint):
     Args:
         jobs: The scheduled jobs to register. Each fires inside a fresh per-job
             :class:`~servicewright.core.contracts.UnitScopeProtocol`.
+        enable_metrics: Record every run (count by outcome, duration, in-progress,
+            last success) through the app's configured metrics sink
+            (``ObsConfig(metrics=...)`` + the matching extra, e.g.
+            servicewright[metrics] for prometheus) via
+            :class:`SchedulerJobMetricsRecorder`.
+        metrics_prefix: Optional metric name prefix.
         kind: Telemetry label (default ``"scheduler"``).
         essential: Whether the entrypoint's exit/failure stops the process.
     """
@@ -85,11 +92,16 @@ class SchedulerEntrypoint(ScopedEntrypoint):
         self,
         *,
         jobs: Sequence[ScheduledJob],
+        enable_metrics: bool = False,
+        metrics_prefix: str | None = None,
         kind: str = "scheduler",
         essential: bool = True,
     ) -> None:
         super().__init__()
         self._jobs: list[ScheduledJob] = list(jobs)
+        self._enable_metrics = enable_metrics
+        self._metrics_prefix = metrics_prefix
+        self._metrics: SchedulerJobMetricsRecorder | None = None
         self.kind = kind
         self.essential = essential
 
@@ -118,6 +130,8 @@ class SchedulerEntrypoint(ScopedEntrypoint):
         """
         await super().bind(ctx)
         self._registry = self._build_registry(self._jobs)
+        if self._enable_metrics:
+            self._metrics = SchedulerJobMetricsRecorder(ctx.observability.metrics, prefix=self._metrics_prefix)
 
         stack = contextlib.AsyncExitStack()
         try:
@@ -243,8 +257,12 @@ class SchedulerEntrypoint(ScopedEntrypoint):
         start = time.perf_counter()
         logger.info("Job execution started", extra=log_ctx)
         try:
-            async with self.unit_scope(context={"job_id": job_id, "run_id": run_id}) as scope:
-                await job.func(scope, *job.args, **job.kwargs)
+            # The tracker sits INSIDE the try so it sees every exception on its
+            # way out (and re-raises it): in-progress is released and the run
+            # recorded — ok / error / cancelled — before the log lines below.
+            with self._track(job_id):
+                async with self.unit_scope(context={"job_id": job_id, "run_id": run_id}) as scope:
+                    await job.func(scope, *job.args, **job.kwargs)
         except asyncio.CancelledError:
             logger.warning(
                 "Job execution cancelled",
@@ -262,6 +280,12 @@ class SchedulerEntrypoint(ScopedEntrypoint):
             "Job execution completed",
             extra={**log_ctx, "duration_seconds": round(time.perf_counter() - start, 4)},
         )
+
+    def _track(self, job_id: str) -> contextlib.AbstractContextManager[None]:
+        """The metrics tracker for one run (a no-op when metrics are off)."""
+        if self._metrics is None:
+            return contextlib.nullcontext()
+        return self._metrics.track(job_id)
 
     @staticmethod
     def _build_registry(jobs: Sequence[ScheduledJob]) -> dict[str, ScheduledJob]:
@@ -283,10 +307,18 @@ class SchedulerPlugin:
         self,
         *,
         jobs: Sequence[ScheduledJob],
+        enable_metrics: bool = False,
+        metrics_prefix: str | None = None,
         kind: str = "scheduler",
         essential: bool = True,
     ) -> None:
-        self._entrypoint = SchedulerEntrypoint(jobs=jobs, kind=kind, essential=essential)
+        self._entrypoint = SchedulerEntrypoint(
+            jobs=jobs,
+            enable_metrics=enable_metrics,
+            metrics_prefix=metrics_prefix,
+            kind=kind,
+            essential=essential,
+        )
 
     @property
     def entrypoint(self) -> SchedulerEntrypoint:

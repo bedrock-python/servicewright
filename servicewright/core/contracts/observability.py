@@ -11,8 +11,8 @@ The author-facing ``*Sink`` ABCs (which carry SDK-touching methods such as
 (``servicewright.adapters.observability``), NOT here, so this module stays free of
 ``Any``-typed SDK escape hatches and importable with zero extras installed.
 
-Metrics deliberately expose generic *instruments* (counter / histogram) rather
-than per-use-case recorders: each transport adapter composes its own recorder
+Metrics deliberately expose generic *instruments* (counter / histogram / gauge)
+rather than per-use-case recorders: each transport adapter composes its own recorder
 (and owns its frozen metric names) from these instruments, so a new transport
 or a new backend never touches the kernel.
 """
@@ -69,6 +69,26 @@ class HistogramProtocol(Protocol):
 
     def observe(self, value: float, **labels: str) -> None:
         """Record one observation for the given label values."""
+        ...
+
+
+class GaugeProtocol(Protocol):
+    """A metric instrument holding a value that goes up and down.
+
+    The instrument for anything that is a *level* rather than a rate — runs in
+    progress, queue depth, the timestamp of the last success.
+    """
+
+    def set(self, value: float, **labels: str) -> None:
+        """Set the value for the given label values."""
+        ...
+
+    def inc(self, amount: float = 1.0, **labels: str) -> None:
+        """Increment by ``amount`` for the given label values."""
+        ...
+
+    def dec(self, amount: float = 1.0, **labels: str) -> None:
+        """Decrement by ``amount`` for the given label values."""
         ...
 
 
@@ -130,6 +150,7 @@ class Masker(Protocol):
 __all__ = [
     "CounterProtocol",
     "ErrorReporterProtocol",
+    "GaugeProtocol",
     "HistogramProtocol",
     "Masker",
     "Redactor",

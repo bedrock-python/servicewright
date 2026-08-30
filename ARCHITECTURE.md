@@ -288,11 +288,13 @@ class Redactor(Protocol):                                        # any dict->dic
 ```
 
 There is **no per-use-case recorder in the kernel**: metrics expose generic *instruments*
-(counter / histogram, minted by `MetricsSinkProtocol.counter()/histogram()`), and each **transport
-adapter composes its own recorder from them and owns its frozen metric names**
+(counter / histogram / gauge, minted by `MetricsSinkProtocol.counter()/histogram()/gauge()`), and
+each **transport adapter composes its own recorder from them and owns its frozen metric names**
 (`adapters/grpc/metrics.py` owns `grpc_requests_total{…}` and the 5-arg
-`GrpcServerMetricsRecorder`). A new transport or a new backend therefore never touches the kernel —
-backends implement two instrument types and automatically serve every transport. The author-facing
+`GrpcServerMetricsRecorder`; `adapters/apscheduler{3,4}/metrics.py` own
+`scheduler_job_runs_total{…}` and `SchedulerJobMetricsRecorder`). A new transport or a new backend
+therefore never touches the kernel — backends implement three instrument types and automatically
+serve every transport. The author-facing
 `*Sink` ABCs carry SDK-touching methods (`mount(app)`, `tracer()`, `instrument_fastapi()`) and
 therefore live in the **adapter** layer (`adapters/observability/base.py`), keeping
 `core/contracts/` free of SDK escape hatches.
@@ -360,7 +362,8 @@ order). Interceptors/middlewares stay **passive seams** touching already-initial
 - **Degradation (uniform):** missing extra = **hard-raise at Bootstrap**; disabled/unconfigured =
   **NullObject**. `shutdown()` is best-effort, never raises.
 - **Frozen name contract:** metric names live with their OWNER — the transport adapter that mints
-  the instruments (`adapters/grpc/metrics.py` for `grpc_requests_total{…}`); backends receive
+  the instruments (`adapters/grpc/metrics.py` for `grpc_requests_total{…}`,
+  `adapters/apscheduler{3,4}/metrics.py` for `scheduler_job_runs_total{…}`); backends receive
   ready names and cannot rename them. Naming discipline (`make_metric_name`) is a pure kernel
   utility (`core/observability/naming.py`).
 
