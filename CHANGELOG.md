@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.8.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.7.0...servicewright-v0.8.0) (2026-08-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* MetricsSink.gauge() is abstract — a third-party metrics backend must implement it (set / inc / dec) or fail at construction.
+
+### Features
+
+* record scheduled-job runs and add a gauge instrument to the metrics seam ([#26](https://github.com/bedrock-python/servicewright/issues/26)) ([92d45cf](https://github.com/bedrock-python/servicewright/commit/92d45cfdbd2501602fb35978d18c42059e5bea83)), closes [#25](https://github.com/bedrock-python/servicewright/issues/25)
+
 ## [0.7.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.6.0...servicewright-v0.7.0) (2026-08-29)
 
 
