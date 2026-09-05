@@ -18,6 +18,8 @@ import pytest
 from deadline_budget import DeadlineExceededError
 from fastapi import APIRouter, FastAPI, HTTPException
 from fastapi.testclient import TestClient
+from prometheus_client import CollectorRegistry
+from prometheus_fastapi_instrumentator import metrics
 
 from servicewright import (
     AppSpec,
@@ -39,6 +41,7 @@ from servicewright.adapters.fastapi import (
     HttpConfig,
     IdempotencyKey,
     LivenessResponse,
+    MetricsInstrumentatorConfig,
     MiddlewareConfig,
     ProblemDetails,
     ReadinessResponse,
@@ -48,6 +51,7 @@ from servicewright.adapters.fastapi import (
     XUserId,
     current_unit_scope,
     get_unit_scope,
+    setup_metrics_instrumentator,
 )
 from servicewright.core.health import HealthRegistry
 from servicewright.core.spec import BootstrapContext, ServiceContext
@@ -766,6 +770,65 @@ async def test__metrics_endpoint__instrumentator_missing__raises_with_the_instal
     ep = FastApiEntrypoint(config=HttpConfig(port=0), metrics=True)
     with pytest.raises(ImportError, match=r"servicewright\[fastapi\]"):
         await ep.build_app(_make_service_ctx(FakeContainer()))
+
+
+@pytest.fixture
+def metrics_registry() -> CollectorRegistry:
+    return CollectorRegistry()
+
+
+def _private_registry_config(registry: CollectorRegistry, **fields: Any) -> MetricsInstrumentatorConfig:
+    # The in-progress gauge always lands on the global REGISTRY, so a second
+    # instrumented app in one process would collide on it; everything else goes
+    # to a private registry so tests do not see each other's series.
+    return MetricsInstrumentatorConfig(
+        init_kwargs={"registry": registry, "should_instrument_requests_inprogress": False},
+        **fields,
+    )
+
+
+async def _build_instrumented_client(config: MetricsInstrumentatorConfig) -> TestClient:
+    router = APIRouter()
+
+    @router.get("/ping")
+    async def ping() -> dict[str, str]:
+        return {"pong": "ok"}
+
+    def configure(app: FastAPI, ctx: ServiceContext) -> None:
+        setup_metrics_instrumentator(app, config=config)
+
+    ep = FastApiEntrypoint(config=HttpConfig(port=0), routers=(router,), configure_app=configure)
+    return await _build_client(ep, _make_service_ctx(FakeContainer()))
+
+
+async def test__metrics_instrumentator__instrumentations_configured__emit_their_series(
+    metrics_registry: CollectorRegistry,
+) -> None:
+    config = _private_registry_config(
+        metrics_registry,
+        instrumentations=[
+            metrics.request_size(registry=metrics_registry),
+            metrics.response_size(registry=metrics_registry),
+        ],
+    )
+    client = await _build_instrumented_client(config)
+    client.get("/ping")
+
+    body = client.get("/system/metrics").text
+
+    assert 'http_request_size_bytes_count{handler="/ping",method="GET",status="2xx"} 1.0' in body
+    assert 'http_response_size_bytes_count{handler="/ping",method="GET",status="2xx"} 1.0' in body
+
+
+async def test__metrics_instrumentator__instrumentations_left_empty__keeps_the_default_set(
+    metrics_registry: CollectorRegistry,
+) -> None:
+    client = await _build_instrumented_client(_private_registry_config(metrics_registry))
+    client.get("/ping")
+
+    body = client.get("/system/metrics").text
+
+    assert 'http_request_duration_seconds_count{handler="/ping",method="GET"} 1.0' in body
 
 
 # --------------------------------------------------------------------------- #

@@ -8,6 +8,7 @@ folded from the FastAPI service-runtime prototype's ``AsyncHttpAppSpec``.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -130,6 +131,11 @@ class MetricsInstrumentatorConfig:
     init_kwargs: dict[str, Any] = field(default_factory=dict)
     instrument_kwargs: dict[str, Any] = field(default_factory=dict)
     expose_kwargs: dict[str, Any] = field(default_factory=dict)
+
+    # Passed to ``Instrumentator.add()`` before ``instrument()``: the library's
+    # per-request callables (``metrics.request_size()`` and friends, or your
+    # own). Any given here REPLACE the default set rather than extend it.
+    instrumentations: Sequence[Any] = ()
 
 
 @dataclass(slots=True)

@@ -281,6 +281,31 @@ def configure_app(app, ctx) -> None:
 FastApiEntrypoint(metrics=False, configure_app=configure_app)
 ```
 
+`MetricsInstrumentatorConfig` is a pass-through, one field per call the wrapper makes: `init_kwargs`
+to `Instrumentator(...)`, `instrumentations` to `.add(...)`, `instrument_kwargs` to
+`.instrument(...)` and `expose_kwargs` to `.expose(...)`.
+
+`instrumentations` takes the library's per-request callables — its own `metrics.request_size()` and
+friends, or your own `Callable[[Info], None | Awaitable[None]]`. Anything passed there **replaces**
+the default set rather than extending it, and the two do not combine: `metrics.default()` already
+registers `http_request_size_bytes` / `http_response_size_bytes` (summaries labelled by handler
+only), so a `request_size()` added next to it — the same series with method and status labels —
+hits a duplicated time series and is silently dropped. To keep the built-ins alongside the
+finer-labelled sizes, compose the set from the pieces:
+
+```python
+from prometheus_fastapi_instrumentator import metrics
+
+MetricsInstrumentatorConfig(
+    instrumentations=[
+        metrics.requests(),
+        metrics.latency(),
+        metrics.request_size(),
+        metrics.response_size(),
+    ],
+)
+```
+
 ## Tracing
 
 ```bash
