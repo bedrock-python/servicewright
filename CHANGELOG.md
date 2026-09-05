@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.8.0...servicewright-v0.9.0) (2026-09-05)
+
+
+### Features
+
+* **fastapi:** pass instrumentations through to Instrumentator.add() ([#29](https://github.com/bedrock-python/servicewright/issues/29)) ([1b48f25](https://github.com/bedrock-python/servicewright/commit/1b48f257210752bf29d4c2a769eea31beb1713d8)), closes [#28](https://github.com/bedrock-python/servicewright/issues/28)
+
 ## [0.8.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.7.0...servicewright-v0.8.0) (2026-08-30)
 
 
