@@ -53,7 +53,8 @@ def setup_metrics_instrumentator(
         "tags": ["system"],
     } | cfg.expose_kwargs
 
-    Instrumentator(**init_kwargs).instrument(app, **instrument_kwargs).expose(app, **expose_kwargs)
+    instrumentator = Instrumentator(**init_kwargs).add(*cfg.instrumentations)
+    instrumentator.instrument(app, **instrument_kwargs).expose(app, **expose_kwargs)
 
 
 __all__ = ["setup_metrics_instrumentator"]
