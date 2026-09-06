@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 # A DI-agnostic servicer registration callback. It receives the raw gRPC server
 # and the ServiceContext so it can resolve singletons from ``ctx.app_scope`` and
 # wire per-RPC dependencies via ``current_unit_scope`` inside servicer methods.
-ServicerRegisterer = Callable[["grpc.aio.Server", "ServiceContext[Any, Any]"], "None | Awaitable[None]"]
+ServicerRegisterer = Callable[["grpc.aio.Server", "ServiceContext[Any, Any]"], "Awaitable[None] | None"]
 
 InterceptorFactory = Callable[
     ["ServiceContext[Any, Any]"],

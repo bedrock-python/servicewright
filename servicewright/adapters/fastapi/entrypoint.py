@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 # A DI-agnostic route registration callback. It receives the FastAPI app and the
 # ServiceContext so it can resolve singletons from ``ctx.app_scope`` and wire
 # per-request dependencies via ``get_unit_scope`` / ``current_unit_scope``.
-RoutesRegisterer = Callable[["FastAPI", "ServiceContext[Any, Any]"], "None | Awaitable[None]"]
+RoutesRegisterer = Callable[["FastAPI", "ServiceContext[Any, Any]"], "Awaitable[None] | None"]
 
 # A final app-configuration hook (called last, after everything else is wired).
 ConfigureApp = Callable[["FastAPI", "ServiceContext[Any, Any]"], None]
