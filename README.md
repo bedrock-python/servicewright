@@ -17,6 +17,15 @@ core: a cron job and an HTTP request are the same thing — one unit of work in 
 This is the model behind .NET Generic Host, Spring `SmartLifecycle` and go-kratos
 `transport.Server`, adapted to async Python.
 
+> [!TIP]
+> **Building this with an AI assistant?** Hand it
+> **[one page](https://bedrock-python.github.io/servicewright/agents/)** instead of the
+> whole site: the public API surface, the startup and shutdown ordering that breaks code
+> when it is broken, which batteries are opt-in and silent when they are not switched on,
+> the mistakes models actually make with this API, and a map of which page to fetch for the
+> rest. Every docs page is also served as raw Markdown at its own URL, and a **Copy page**
+> button at the top of each one hands it straight to a chat window.
+
 ## Why
 
 - **One lifecycle for every archetype**: Bootstrap → Warmup → Ready → Serve → Drain → Cleanup.
@@ -157,6 +166,7 @@ Full documentation: **[bedrock-python.github.io/servicewright](https://bedrock-p
 
 | | |
 | --- | --- |
+| [For AI agents](https://bedrock-python.github.io/servicewright/agents/) | the whole library on one page, written for a coding assistant |
 | [Your first service](https://bedrock-python.github.io/servicewright/getting-started/first-service/) | a complete service with nothing installed but the kernel |
 | [Tutorial](https://bedrock-python.github.io/servicewright/getting-started/tutorial/) | an HTTP API and a cron job in one process |
 | [Architecture](https://bedrock-python.github.io/servicewright/concepts/architecture/) | the six nouns, the two layers, the dependency rule |
