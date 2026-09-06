@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, TypeVar
 
-from .constants import DEFAULT_CLEANUP_TIMEOUT_SECONDS, DEFAULT_DRAIN_GRACE_SECONDS
+from .constants import DEFAULT_CLEANUP_TIMEOUT_SECONDS, DEFAULT_DRAIN_DELAY_SECONDS, DEFAULT_DRAIN_GRACE_SECONDS
 from .contracts import (
     AppScopeProtocol,
     BaseServiceSettingsProtocol,
@@ -83,3 +83,5 @@ class AppSpec[TSettings: "BaseServiceSettingsProtocol", TContainer: "DependencyC
     """How long each entrypoint gets to finish in-flight work during drain."""
     cleanup_timeout_seconds: float = DEFAULT_CLEANUP_TIMEOUT_SECONDS
     """Budget for each post-drain step (``stop()``, hooks, observability flush)."""
+    drain_delay_seconds: float = DEFAULT_DRAIN_DELAY_SECONDS
+    """How long every entrypoint keeps accepting after readiness goes ``False``, before the first ``drain()``."""

@@ -20,6 +20,8 @@ pytestmark = pytest.mark.unit
 
 # Drain/cleanup budget used by the timeout tests; any hang is far longer.
 FAST_BUDGET = 0.02
+# Long enough to sample the loop in the middle of it, short enough not to slow the suite.
+DRAIN_DELAY = 0.05
 
 
 @pytest.fixture
@@ -594,6 +596,94 @@ async def test__host_run__shutdown_step_is_cancelled__propagates_the_cancellatio
     # Act & Assert
     with pytest.raises(asyncio.CancelledError):
         await asyncio.gather(host.run(FakeSettings(), [entrypoint], stop=stop), stop_when_ready())
+
+
+# --------------------------------------------------------------------------- #
+# Drain delay — the window in which the service is unready and still accepting
+# --------------------------------------------------------------------------- #
+class _Timed(_Recording):
+    """Recording entrypoint that timestamps the moments the delay sits between."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.serve_returned = asyncio.Event()
+        self.serve_returned_at: float | None = None
+        self.drain_started_at: float | None = None
+
+    async def serve(self, *, stop: asyncio.Event) -> None:
+        await super().serve(stop=stop)
+        self.serve_returned_at = asyncio.get_running_loop().time()
+        self.serve_returned.set()
+
+    async def drain(self, grace: float) -> None:
+        self.drain_started_at = asyncio.get_running_loop().time()
+        await super().drain(grace)
+
+
+async def test__host_run__drain_delay_set__drain_starts_no_earlier_than_the_delay_after_serve_returned(
+    spec: AppSpec[Any, Any],
+    host: Host[Any, Any],
+    stop: asyncio.Event,
+    stop_when_ready: Callable[[], asyncio.Future[None]],
+) -> None:
+    # Arrange
+    spec.drain_delay_seconds = DRAIN_DELAY
+    entrypoint = _Timed(kind="http")
+
+    # Act
+    await asyncio.gather(host.run(FakeSettings(), [entrypoint], stop=stop), stop_when_ready())
+
+    # Assert
+    assert entrypoint.serve_returned_at is not None
+    assert entrypoint.drain_started_at is not None
+    assert entrypoint.drain_started_at - entrypoint.serve_returned_at >= DRAIN_DELAY
+
+
+async def test__host_run__drain_delay_set__readiness_is_false_while_nothing_has_been_drained_yet(
+    spec: AppSpec[Any, Any],
+    host: Host[Any, Any],
+    stop: asyncio.Event,
+    stop_when_ready: Callable[[], asyncio.Future[None]],
+) -> None:
+    # Arrange
+    spec.drain_delay_seconds = DRAIN_DELAY
+    entrypoint = _Timed(kind="http")
+
+    async def sample_mid_delay() -> tuple[bool, list[str]]:
+        await entrypoint.serve_returned.wait()
+        await asyncio.sleep(DRAIN_DELAY / 2)
+        return spec.health.ready, list(entrypoint.events)
+
+    # Act
+    _, _, (ready, events) = await asyncio.gather(
+        host.run(FakeSettings(), [entrypoint], stop=stop), stop_when_ready(), sample_mid_delay()
+    )
+
+    # Assert
+    assert ready is False
+    assert events == ["bind", "serve"], "the listener must still be open while readiness propagates"
+
+
+async def test__host_run__drain_delay_set_but_stop_arrives_during_bind__skips_the_delay(
+    spec: AppSpec[Any, Any],
+    host: Host[Any, Any],
+    stop: asyncio.Event,
+) -> None:
+    # Arrange
+    spec.drain_delay_seconds = 30
+
+    class _StopDuringBind(_Recording):
+        async def bind(self, ctx: Any) -> None:
+            await super().bind(ctx)
+            stop.set()
+
+    entrypoint = _StopDuringBind(kind="http")
+
+    # Act
+    await asyncio.wait_for(host.run(FakeSettings(), [entrypoint], stop=stop), timeout=5)
+
+    # Assert
+    assert entrypoint.events == ["bind", "drain", "stop"], "never ready means nothing to wait for"
 
 
 # --------------------------------------------------------------------------- #

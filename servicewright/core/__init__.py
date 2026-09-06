@@ -5,6 +5,7 @@ from __future__ import annotations
 from .aio import Host
 from .constants import (
     DEFAULT_CLEANUP_TIMEOUT_SECONDS,
+    DEFAULT_DRAIN_DELAY_SECONDS,
     DEFAULT_DRAIN_GRACE_SECONDS,
 )
 from .context import (
@@ -68,6 +69,7 @@ from .warmup import collect_warmers, perform_warmup, warmup_async
 
 __all__ = [
     "DEFAULT_CLEANUP_TIMEOUT_SECONDS",
+    "DEFAULT_DRAIN_DELAY_SECONDS",
     "DEFAULT_DRAIN_GRACE_SECONDS",
     "STANDARD_PROPAGATION_HEADERS",
     "AppScopeProtocol",
