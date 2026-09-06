@@ -71,11 +71,26 @@ The gates are:
 | tracing | `settings.tracing is not None` |
 | metrics | `settings.metrics is not None` |
 
-!!! note "The default manager selects nothing"
+!!! warning "The default manager selects nothing — but `ObsConfig()` selects everything"
 
     `ObservabilityManager()` with no `ObsConfig` disables everything — a bare `AppSpec` runs with
-    zero observability side effects. `ObsConfig()` on its own, however, defaults to
-    `prometheus` / `otel` / `sentry` / `structlog`. Pass it explicitly when you want them.
+    zero observability side effects.
+
+    `ObsConfig()` on its own is the opposite: its field defaults are `prometheus` / `otel` /
+    `sentry` / `structlog`, so a bare one selects all four. Against `BaseServiceSettings()`
+    defaults — `logging` and `metrics` sections present, `tracing` `None`, `error_tracking`
+    without a DSN — that makes `ObservabilityManager(ObsConfig())` a service that will not
+    start without `servicewright[observability,metrics]`:
+
+    ```
+    ImportError: structlog logging requires servicewright[observability]; install it.
+    ```
+
+    Name the concerns you want and pass `None` for the rest:
+
+    ```python
+    ObsConfig(metrics="prometheus", logging="structlog", tracing=None, error_tracking=None)
+    ```
 
 ## How it degrades
 
@@ -200,7 +215,7 @@ from servicewright import ChainRedactor, KeyRedactor, ObservabilityManager, Valu
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
 
 observability = ObservabilityManager(
-    ObsConfig(),
+    ObsConfig(logging="structlog", error_tracking="sentry", metrics=None, tracing=None),
     redactor=ChainRedactor(KeyRedactor(), ValueRedactor(lambda v: EMAIL.sub("<email>", v))),
 )
 ```
@@ -220,7 +235,7 @@ cross-cutting `redactor` on their surface:
 
 ```python
 observability = ObservabilityManager(
-    ObsConfig(),
+    ObsConfig(logging="structlog", error_tracking="sentry", metrics=None, tracing=None),
     redactor=KeyRedactor(),                      # every surface: cheap, name-based
     error_redactor=ChainRedactor(                # error path only: add the ML masker
         KeyRedactor(),
