@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.9.0...servicewright-v0.9.1) (2026-09-06)
+
+
+### Documentation
+
+* org-wide security policy and code of conduct ([#36](https://github.com/bedrock-python/servicewright/issues/36)) ([ad9e77a](https://github.com/bedrock-python/servicewright/commit/ad9e77a986ec9b83d81cc3fe57acf1000ba3c101))
+
 ## [0.9.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.8.0...servicewright-v0.9.0) (2026-09-05)
 
 
