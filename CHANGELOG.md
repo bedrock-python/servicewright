@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.9.1...servicewright-v0.10.0) (2026-09-06)
+
+
+### Features
+
+* AppSpec.drain_delay_seconds keeps the listeners open after readiness goes red ([#47](https://github.com/bedrock-python/servicewright/issues/47)) ([42c46c4](https://github.com/bedrock-python/servicewright/commit/42c46c47f8391a6ffc12fc3eb16d6dd0f0991c8e)), closes [#46](https://github.com/bedrock-python/servicewright/issues/46)
+
 ## [0.9.1](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.9.0...servicewright-v0.9.1) (2026-09-06)
 
 
