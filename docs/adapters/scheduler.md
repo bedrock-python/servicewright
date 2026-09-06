@@ -178,6 +178,22 @@ One field differs, because APScheduler itself changed it:
     installed. That is also why the `all` extra bundles `apscheduler4` and excludes
     `apscheduler3`.
 
+!!! danger "GHSA: APScheduler 4 serializers, and why this adapter is not affected"
+
+    Every published APScheduler 4 release is an alpha, and all of them carry an unpatched
+    advisory: `JSONSerializer` and `CBORSerializer` deserialize job data without validating
+    it, which is remote code execution for anyone who can write to the job store. There is no
+    fixed version to upgrade to.
+
+    This adapter never reaches that code. It constructs `AsyncScheduler()` with no arguments —
+    the default in-memory job store, which serializes nothing — and it exposes no way to pass a
+    data store or a serializer in: `ScheduledJob` describes jobs, not storage. Nothing in
+    `servicewright` imports a serializer.
+
+    It becomes your problem the moment you build your own `AsyncScheduler` with a persistent
+    data store. Do that with a serializer you trust and a job store nothing else can write to,
+    or stay on `apscheduler3` until 4.0 is released.
+
 Behaviourally the two adapters differ only where the libraries force it. APScheduler 3.x exposes
 no in-flight job set and its executor cancels pending futures on shutdown regardless of the `wait`
 flag, so that adapter tracks its own running jobs to make the grace window real.
