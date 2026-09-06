@@ -79,16 +79,20 @@ not make the pod unready on its own. Register your own check if your service dis
 
 ## Import paths
 
-Import from the **submodule**, as shown above. The package-level convenience imports fall back to
-`None` when an extra is missing:
+Both spellings work and give you the same class:
 
 ```python
-from servicewright.adapters.warmers import KafkaProducerWarmer   # None without [kafka]
-from servicewright.adapters.warmers.kafka import KafkaProducerWarmer   # ImportError, as it should
+from servicewright.adapters.warmers import KafkaProducerWarmer
+from servicewright.adapters.warmers.kafka import KafkaProducerWarmer
 ```
 
-`servicewright.adapters.health` exports nothing at package level for the same reason — importing
-it never requires an extra.
+Neither requires the extra to be *importable*. The warmers are duck-typed on the client you pass
+in and soft-import their SDK, so the extra is what gives you a client to hand them, not what makes
+the module load. `PostgresWarmer` is the one exception: SQLAlchemy is what builds its probe query,
+so without `[postgres]` it raises `PostgresWarmupError` at construction.
+
+`servicewright.adapters.health` exports nothing at package level; import each check from its
+submodule, which raises `ImportError` naming the extra at construction.
 
 ## Writing your own
 

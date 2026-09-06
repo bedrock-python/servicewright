@@ -4,10 +4,17 @@ import asyncio
 import logging
 from typing import Any
 
-from aiokafka.errors import KafkaError
-
 from ...core.contracts.warmer import AsyncWarmer
 from ...core.exceptions import KafkaProducerWarmupError
+
+# Optional dependency: aiokafka. The producer is duck-typed, so the SDK is only
+# needed to narrow the failure it raises; without it every failure is unexpected.
+try:
+    from aiokafka.errors import KafkaError as _KafkaError
+
+    KafkaError: Any = _KafkaError
+except ImportError:
+    KafkaError = Exception
 
 logger = logging.getLogger(__name__)
 

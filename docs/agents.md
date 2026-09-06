@@ -298,7 +298,9 @@ see `None`, and nothing is exported.
 ### Adapters
 
 Each subpackage needs its extra; importing one without it raises `ImportError` naming what
-to install.
+to install. `servicewright.adapters.warmers` and `.health` are the exception: they are
+duck-typed on the client you pass in and soft-import their SDK, so they import with no extra
+installed and raise (or degrade) at construction instead.
 
 | Import | Public names |
 |---|---|
@@ -309,7 +311,7 @@ to install.
 | `servicewright.adapters.dishka` | `DishkaContainer`, `DishkaScope` |
 | `servicewright.adapters.settings` | `BaseServiceSettings`, `LoggingSettings`, `MetricsSettings`, `TracingSettings`, `ErrorTrackingSettings` |
 | `servicewright.adapters.observability` | ABCs `MetricsSink`, `TracingSink`, `ErrorTrackingSink`, `LoggingSink`; backends `PrometheusMetricsSink`, `OtelTracingSink`, `SentryErrorTrackingSink`, `StructlogLoggingSink`, `StdlibLoggingSink` (each imported lazily on first access) |
-| `servicewright.adapters.warmers` | `RedisWarmer`, `PostgresWarmer`, `KafkaProducerWarmer` — all `(client, …, timeout=10.0, priority=0, raise_on_failure=True)` |
+| `servicewright.adapters.warmers` | `RedisWarmer`, `PostgresWarmer`, `KafkaProducerWarmer` — all `(client, …, timeout=10.0, priority=0, raise_on_failure=True)`; the package and the submodules both export them, extra or no extra, and `PostgresWarmer` is the only one that needs its SDK (`PostgresWarmupError` at construction without it) |
 | `servicewright.adapters.health.postgres` / `.redis` | `PostgresHealthCheck(session_maker, timeout=5.0)`, `RedisHealthCheck(client, timeout=5.0)` — import from the submodule, not the package |
 | `servicewright.testing` | `FakeContainer`, `FakeScope`, `FakeSettings`, `FakeEntrypoint` |
 
