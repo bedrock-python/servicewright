@@ -196,6 +196,7 @@ unless a row says otherwise.
 | `run_sync` | `run_sync(service, settings, *, loop="auto")` | `"auto"` / `"asyncio"` / `"uvloop"` |
 | `event_loop_factory` | `event_loop_factory(loop="auto")` | the `loop_factory` for `asyncio.run`, or `None` |
 | `Host` | `Host(spec)` | `.run(settings, entrypoints=(), *, plugins=(), stop=None)`, `.add_entrypoint(ep)`, `.bootstrap(settings)` |
+| `install_signal_handlers` | `install_signal_handlers(stop_event)` | the installer the Host uses on the unowned path; returns an idempotent remover. Only useful when you pass `stop=` yourself — see rule 8 |
 
 ### Describing a service
 
@@ -372,8 +373,9 @@ Each `*Plugin` takes exactly the same arguments as its entrypoint and exposes `.
    not want taking the API down.
 8. **Signals are installed only when you do not pass `stop`.** `await service.run(settings,
    stop=my_event)` installs none — that is the embedding and test path, and you own
-   SIGINT/SIGTERM. A second signal on the owned path exits immediately with `128 + signum`,
-   skipping every remaining cleanup step.
+   SIGINT/SIGTERM. Call `install_signal_handlers(my_event)` yourself to get the same handlers
+   back, and its return value to remove them. A second signal on the owned path exits
+   immediately with `128 + signum`, skipping every remaining cleanup step.
 9. **Which base class you extend decides who opens the unit scope.** `ServerEntrypoint`
    exposes no `unit_scope` at all, because the transport adapter's middleware or interceptor
    opens it per request. `ScopedEntrypoint.unit_scope()` is the only sanctioned per-unit API

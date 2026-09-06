@@ -219,3 +219,24 @@ async def test__install_signal_handlers__registration_always_fails__does_not_rai
 
     # Assert
     assert stop.is_set() is False
+
+
+def test__install_signal_handlers__imported_from_the_package_root__is_the_core_function() -> None:
+    # Act
+    import servicewright
+
+    # Assert
+    assert servicewright.install_signal_handlers is install_signal_handlers
+
+
+def test__servicewright__public_names_of_core__are_all_re_exported_at_the_top_level() -> None:
+    """`install_signal_handlers` was the one name in ``core.__all__`` the package root dropped."""
+    # Arrange
+    import servicewright
+    from servicewright import core
+
+    # Act
+    missing = set(core.__all__) - set(servicewright.__all__)
+
+    # Assert
+    assert missing == set()

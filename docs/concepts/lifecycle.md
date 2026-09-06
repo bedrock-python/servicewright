@@ -151,7 +151,20 @@ stop = asyncio.Event()
 await service.run(settings, stop=stop)   # you own the signals
 ```
 
-This is the embedding path, and the one tests use.
+This is the embedding path, and the one tests use. If what you wanted was the runtime's own
+handlers on a stop event you also control, `install_signal_handlers` is the installer the Host
+uses, exported from the top level:
+
+```python
+from servicewright import install_signal_handlers
+
+stop = asyncio.Event()
+uninstall = install_signal_handlers(stop)   # returns an idempotent remover
+try:
+    await service.run(settings, stop=stop)
+finally:
+    uninstall()
+```
 
 ## Exit codes
 
