@@ -175,6 +175,7 @@ def build_spec(settings: Settings) -> AppSpec:
             ObsConfig(metrics="prometheus", logging="structlog"),
             redactor=KeyRedactor(),
         ),
+        drain_delay_seconds=5.0,
         drain_grace_seconds=30.0,
         cleanup_timeout_seconds=10.0,
     )
@@ -255,7 +256,7 @@ spec:
     rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
   template:
     spec:
-      terminationGracePeriodSeconds: 60      # > 30 drain + 10 cleanup
+      terminationGracePeriodSeconds: 60      # > 5 delay + 30 drain + 10 cleanup
       containers:
         - name: api
           command: ["python", "-m", "orders_service.api_main"]

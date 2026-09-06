@@ -243,7 +243,7 @@ socket-less worker needs the second one.
 `terminationGracePeriodSeconds` is smaller than what the service needs:
 
 ```
-terminationGracePeriodSeconds > drain_grace_seconds + cleanup_timeout_seconds + slack
+terminationGracePeriodSeconds > drain_delay_seconds + drain_grace_seconds + cleanup_timeout_seconds + slack
 ```
 
 Exit code `137` means `SIGKILL` arrived. Raise the grace period, or lower the budgets.
@@ -281,13 +281,15 @@ with contextlib.suppress(TimeoutError):                  # ✅ wakes immediately
 
 ### Requests fail with 502/504 during a rollout
 
-readiness flips to `false` before anything stops accepting, so the usual causes are outside the
-process:
+readiness flips to `false` before anything stops accepting, but at the default
+`drain_delay_seconds=0.0` the listener closes in the very next tick, so connections the load
+balancer routes during endpoint propagation are refused. Once that is covered, the remaining causes
+are outside the process:
 
 | Cause | Fix |
 | --- | --- |
 | Probe interval too long | `readinessProbe.periodSeconds: 5`, `failureThreshold: 2` |
-| Endpoint propagation lag | raise `drain_grace_seconds` so the pod keeps serving longer |
+| Endpoint propagation lag | set `drain_delay_seconds` to the lag; `drain_grace_seconds` only covers requests already in flight, the listener closes the moment the drain starts |
 | `maxUnavailable > 0` | set `maxUnavailable: 0`, `maxSurge: 1` |
 | Client keep-alive to a dead pod | it is a client-side retry policy problem, not a server one |
 

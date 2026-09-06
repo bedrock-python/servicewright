@@ -11,8 +11,11 @@ When the kubelet terminates a pod, two things happen **concurrently**:
 2. `SIGTERM` is sent to your process.
 
 That race is why a service must keep serving *after* it has been told to stop. servicewright does:
-readiness flips to `false` first, so the endpoint controller starts removing you, and only then
-does the drain begin.
+readiness flips to `false` first, so the endpoint controller starts removing you, then every
+listener stays open for `drain_delay_seconds`, and only then does the drain begin. The delay is
+the part you configure: it has to cover the time your cluster takes to stop routing to a
+terminating pod, and at its default of `0.0` the listener closes in the same tick readiness goes
+red.
 
 ```mermaid
 sequenceDiagram
@@ -24,8 +27,9 @@ sequenceDiagram
     K->>P: SIGTERM
     K-->>EC: pod marked Terminating
     P->>P: readiness = false
+    P->>P: wait drain_delay_seconds, still accepting
     EC->>LB: endpoint removed
-    Note over P,LB: the pod is still accepting —<br/>this overlap is the point
+    Note over P,LB: the pod is still accepting —<br/>this overlap is the point,<br/>and drain_delay_seconds is its length
     P->>P: drain(grace): finish in-flight work
     P->>P: stop(), pre_shutdown hooks
     P->>P: app scope closes, pools disposed
@@ -78,13 +82,14 @@ The Litestar adapter uses shorter paths: `/system/livez` and `/system/readyz`.
 Get this arithmetic right or the kubelet will `SIGKILL` you mid-drain:
 
 ```
-terminationGracePeriodSeconds  >  drain_grace_seconds + cleanup_timeout_seconds + slack
+terminationGracePeriodSeconds  >  drain_delay_seconds + drain_grace_seconds + cleanup_timeout_seconds + slack
 ```
 
 ```python
 spec = AppSpec(
     service_name="orders",
     create_container=build_container,
+    drain_delay_seconds=5.0,
     drain_grace_seconds=30.0,
     cleanup_timeout_seconds=10.0,
 )
@@ -92,14 +97,18 @@ spec = AppSpec(
 
 ```yaml
 spec:
-  terminationGracePeriodSeconds: 60   # 30 + 10 + slack
+  terminationGracePeriodSeconds: 60   # 5 + 30 + 10 + slack
 ```
 
-!!! tip "No `preStop` sleep needed"
+!!! tip "Set `drain_delay_seconds` to your propagation lag"
 
     The usual `preStop: sleep 5` hack exists to keep a pod serving while endpoint removal
-    propagates. servicewright already does that: `serve()` returns while still accepting, and the
-    listener only closes when `drain()` runs, after readiness has already gone red.
+    propagates. Flipping readiness does not do that by itself: the endpoint controller, kube-proxy
+    and your ingress each learn about it asynchronously, and with `drain_delay_seconds=0.0` the
+    listener closes in the same tick readiness goes red, so whatever is still routed to the pod is
+    refused. `drain_delay_seconds` is that sleep moved into the process, where `readyz` keeps
+    answering `503` for the whole of it. A few seconds covers most clusters; to measure yours, send
+    `SIGTERM` to one pod under load and count refused connections.
 
 ## Exit codes
 

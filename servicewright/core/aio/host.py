@@ -286,9 +286,22 @@ class Host[TSettings: "BaseServiceSettingsProtocol", TContainer: "DependencyCont
         self,
         service_ctx: ServiceContext[TSettings, TContainer],
     ) -> list[ServiceWrightError]:
-        """Drain, stop and run pre-shutdown hooks; return any budget overruns."""
-        # Stop routing first (k8s/LB) before we stop accepting work.
+        """Withdraw readiness, drain, stop and run pre-shutdown hooks; return any budget overruns."""
+        # Stop routing first (k8s/LB) before we stop accepting work...
+        was_ready = self.spec.health.ready
         self.spec.health.ready = False
+
+        # ...and keep accepting while the routing layer catches up: readiness
+        # going red reaches the load balancer asynchronously, and nothing closes
+        # a listener until the first drain() below. A service that never reached
+        # Ready was never routed to, so it has nothing to wait for.
+        delay = self.spec.drain_delay_seconds
+        if was_ready and delay > 0:
+            logger.info(
+                "Readiness withdrawn; holding intake open before drain",
+                extra={"service": self.spec.service_name, "delay": delay},
+            )
+            await asyncio.sleep(delay)
 
         grace = self.spec.drain_grace_seconds
         budget = self.spec.cleanup_timeout_seconds

@@ -9,7 +9,11 @@ from unittest.mock import MagicMock
 import pytest
 
 from servicewright import AppSpec, BootstrapContext, ServiceContext
-from servicewright.core.constants import DEFAULT_CLEANUP_TIMEOUT_SECONDS, DEFAULT_DRAIN_GRACE_SECONDS
+from servicewright.core.constants import (
+    DEFAULT_CLEANUP_TIMEOUT_SECONDS,
+    DEFAULT_DRAIN_DELAY_SECONDS,
+    DEFAULT_DRAIN_GRACE_SECONDS,
+)
 from servicewright.core.health import HealthRegistry
 
 pytestmark = pytest.mark.unit
@@ -109,3 +113,4 @@ def test__app_spec__only_required_fields__uses_the_default_shutdown_budgets() ->
     # Assert
     assert spec.drain_grace_seconds == DEFAULT_DRAIN_GRACE_SECONDS
     assert spec.cleanup_timeout_seconds == DEFAULT_CLEANUP_TIMEOUT_SECONDS
+    assert spec.drain_delay_seconds == DEFAULT_DRAIN_DELAY_SECONDS == 0.0

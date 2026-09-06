@@ -11,6 +11,7 @@ from .__version__ import __version__
 from .adapters.builtin import DaemonEntrypoint, OneShotEntrypoint
 from .core import (
     DEFAULT_CLEANUP_TIMEOUT_SECONDS,
+    DEFAULT_DRAIN_DELAY_SECONDS,
     DEFAULT_DRAIN_GRACE_SECONDS,
     STANDARD_PROPAGATION_HEADERS,
     AppScopeProtocol,
@@ -75,6 +76,7 @@ from .core.contracts import Entrypoint, Plugin, ScopedEntrypoint, ServerEntrypoi
 
 __all__ = [
     "DEFAULT_CLEANUP_TIMEOUT_SECONDS",
+    "DEFAULT_DRAIN_DELAY_SECONDS",
     "DEFAULT_DRAIN_GRACE_SECONDS",
     "STANDARD_PROPAGATION_HEADERS",
     "AppScopeProtocol",

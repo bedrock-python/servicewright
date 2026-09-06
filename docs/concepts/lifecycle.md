@@ -50,8 +50,9 @@ SIGTERM during a 45-second Kafka warmup
 `serve(stop=...)` runs until the `stop` event is set, then **returns while still accepting work**.
 
 That last part is deliberate and easy to get wrong. Returning from `serve()` means "I am still
-open for business and ready to be torn down in order". The Host then flips readiness off and only
-*after* that calls `drain()`, which is what actually closes the listener.
+open for business and ready to be torn down in order". The Host then flips readiness off, waits
+`drain_delay_seconds` with every listener still open, and only *after* that calls `drain()`, which
+is what actually closes the listener.
 
 If the HTTP entrypoint shut uvicorn down inside `serve()` instead, the readiness endpoint would
 die before the load balancer noticed, and the drain window would be meaningless.
@@ -59,13 +60,16 @@ die before the load balancer noticed, and the drain window would be meaningless.
 ## Shutdown
 
 1. **`health.ready = False` first.** Load balancers stop routing before you stop accepting.
-2. **`drain(grace)`** on every bound entrypoint, in **reverse** bind order. Intake stops;
+2. **`drain_delay_seconds` pass** with every entrypoint still accepting. Readiness going red
+   reaches the routing layer asynchronously; this is the window in which it catches up. The
+   default is `0.0`, and the wait is skipped when the service never reached Ready.
+3. **`drain(grace)`** on every bound entrypoint, in **reverse** bind order. Intake stops;
    in-flight work finishes inside the window.
-3. **`stop()`** on every bound entrypoint, in reverse order. Hard stop, time-boxed.
-4. **`pre_shutdown` hooks** — the application scope is still alive here. Flush the outbox, emit
+4. **`stop()`** on every bound entrypoint, in reverse order. Hard stop, time-boxed.
+5. **`pre_shutdown` hooks** — the application scope is still alive here. Flush the outbox, emit
    final events.
-5. **The application scope closes.** Your DI finalizers close pools and clients.
-6. **Observability flushes** (spans, Sentry events, the metrics server thread), then
+6. **The application scope closes.** Your DI finalizers close pools and clients.
+7. **Observability flushes** (spans, Sentry events, the metrics server thread), then
    **`post_shutdown` hooks** run.
 
 Only entrypoints that were actually bound are drained and stopped, and a step that fails is
@@ -78,6 +82,7 @@ logged and skipped so the remaining entrypoints still get their turn. One entryp
 spec = AppSpec(
     service_name="orders",
     create_container=build_container,
+    drain_delay_seconds=5.0,       # once, unready but still accepting
     drain_grace_seconds=30.0,      # per entrypoint, for in-flight work
     cleanup_timeout_seconds=10.0,  # per post-drain step
 )
@@ -95,15 +100,19 @@ spec = AppSpec(
 The extra 5 seconds on the drain step exist so an entrypoint that honours its own grace window
 exactly is not killed a millisecond too early.
 
+`drain_delay_seconds` is not a budget but a fixed wait, spent once between readiness going red and
+the first `drain()`, and only when the service had reached Ready. It costs the full amount on every
+graceful stop, so keep it at the propagation lag and no longer.
+
 A timeout is logged and then surfaced from `run()` — but only if nothing else is already
 propagating. A shutdown that blew its budget must never mask the failure that caused the shutdown
 in the first place.
 
-!!! tip "Match `drain_grace_seconds` to Kubernetes"
+!!! tip "Match the shutdown budgets to Kubernetes"
 
-    Keep `terminationGracePeriodSeconds` larger than `drain_grace_seconds + cleanup_timeout_seconds`,
-    otherwise the kubelet sends `SIGKILL` in the middle of your drain. See
-    [Kubernetes](../operations/kubernetes.md).
+    Keep `terminationGracePeriodSeconds` larger than
+    `drain_delay_seconds + drain_grace_seconds + cleanup_timeout_seconds`, otherwise the kubelet
+    sends `SIGKILL` in the middle of your drain. See [Kubernetes](../operations/kubernetes.md).
 
 ## Event loop
 
@@ -235,6 +244,7 @@ sequenceDiagram
     H->>H: SIGTERM → stop.set()
     E-->>H: serve() returns (still accepting)
     H->>H: health.ready = False
+    Note over H,E: drain_delay_seconds — still accepting
     H->>E: drain(grace)
     H->>E: stop()
     H->>H: pre_shutdown hooks
