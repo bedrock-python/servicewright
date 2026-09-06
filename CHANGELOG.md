@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.9.0...servicewright-v0.9.1) (2026-09-06)
+
+
+### Bug Fixes
+
+* four defects the agents page turned up ([#44](https://github.com/bedrock-python/servicewright/issues/44)) ([dc08d1f](https://github.com/bedrock-python/servicewright/commit/dc08d1fea585b66e79e021dcf57c103a32646c09))
+
 ## [0.9.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.8.0...servicewright-v0.9.0) (2026-09-05)
 
 
