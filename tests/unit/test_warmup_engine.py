@@ -422,3 +422,43 @@ def test__redis_warmer_module__imported_without_redis__raises_with_the_install_h
     finally:
         # Restore
         importlib.reload(redis_mod)
+
+
+def test__kafka_warmer_module__imported_without_aiokafka__falls_back_to_a_bare_exception() -> None:
+    kafka_mod = importlib.import_module("servicewright.adapters.warmers.kafka")
+
+    try:
+        with patch.dict("sys.modules", {"aiokafka": None, "aiokafka.errors": None}):
+            importlib.reload(kafka_mod)
+            assert kafka_mod.KafkaError is Exception
+    finally:
+        # Restore
+        importlib.reload(kafka_mod)
+
+
+@pytest.mark.parametrize(
+    ("name", "module_name", "absent_sdk"),
+    [
+        ("KafkaProducerWarmer", "servicewright.adapters.warmers.kafka", ("aiokafka", "aiokafka.errors")),
+        ("PostgresWarmer", "servicewright.adapters.warmers.postgres", ("sqlalchemy",)),
+        ("RedisWarmer", "servicewright.adapters.warmers.redis", ("redis",)),
+    ],
+)
+def test__warmers_package__its_extra_is_missing__still_exports_the_warmer_class(
+    name: str,
+    module_name: str,
+    absent_sdk: tuple[str, ...],
+) -> None:
+    warmers_pkg = importlib.import_module("servicewright.adapters.warmers")
+    warmer_mod = importlib.import_module(module_name)
+
+    try:
+        with patch.dict("sys.modules", dict.fromkeys(absent_sdk)):
+            importlib.reload(warmer_mod)
+            importlib.reload(warmers_pkg)
+
+            assert getattr(warmers_pkg, name) is getattr(warmer_mod, name)
+    finally:
+        # Restore
+        importlib.reload(warmer_mod)
+        importlib.reload(warmers_pkg)

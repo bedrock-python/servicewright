@@ -14,7 +14,7 @@
 
 - [ ] Tests added or updated
 - [ ] `make check` passes locally (`ruff` + `mypy`)
-- [ ] `CHANGELOG.md` updated under `[Unreleased]`
+- [ ] `CHANGELOG.md` left alone — Release Please generates it from the Conventional Commit subjects (and from the PR title on a squash merge)
 - [ ] Documentation updated (if the public API changed), `docs/agents.md` included
 
 ## Related issues

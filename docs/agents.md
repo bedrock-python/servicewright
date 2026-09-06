@@ -196,6 +196,7 @@ unless a row says otherwise.
 | `run_sync` | `run_sync(service, settings, *, loop="auto")` | `"auto"` / `"asyncio"` / `"uvloop"` |
 | `event_loop_factory` | `event_loop_factory(loop="auto")` | the `loop_factory` for `asyncio.run`, or `None` |
 | `Host` | `Host(spec)` | `.run(settings, entrypoints=(), *, plugins=(), stop=None)`, `.add_entrypoint(ep)`, `.bootstrap(settings)` |
+| `install_signal_handlers` | `install_signal_handlers(stop_event)` | the installer the Host uses on the unowned path; returns an idempotent remover. Only useful when you pass `stop=` yourself — see rule 8 |
 
 ### Describing a service
 
@@ -298,7 +299,9 @@ see `None`, and nothing is exported.
 ### Adapters
 
 Each subpackage needs its extra; importing one without it raises `ImportError` naming what
-to install.
+to install. `servicewright.adapters.warmers` and `.health` are the exception: they are
+duck-typed on the client you pass in and soft-import their SDK, so they import with no extra
+installed and raise (or degrade) at construction instead.
 
 | Import | Public names |
 |---|---|
@@ -309,7 +312,7 @@ to install.
 | `servicewright.adapters.dishka` | `DishkaContainer`, `DishkaScope` |
 | `servicewright.adapters.settings` | `BaseServiceSettings`, `LoggingSettings`, `MetricsSettings`, `TracingSettings`, `ErrorTrackingSettings` |
 | `servicewright.adapters.observability` | ABCs `MetricsSink`, `TracingSink`, `ErrorTrackingSink`, `LoggingSink`; backends `PrometheusMetricsSink`, `OtelTracingSink`, `SentryErrorTrackingSink`, `StructlogLoggingSink`, `StdlibLoggingSink` (each imported lazily on first access) |
-| `servicewright.adapters.warmers` | `RedisWarmer`, `PostgresWarmer`, `KafkaProducerWarmer` — all `(client, …, timeout=10.0, priority=0, raise_on_failure=True)` |
+| `servicewright.adapters.warmers` | `RedisWarmer`, `PostgresWarmer`, `KafkaProducerWarmer` — all `(client, …, timeout=10.0, priority=0, raise_on_failure=True)`; the package and the submodules both export them, extra or no extra, and `PostgresWarmer` is the only one that needs its SDK (`PostgresWarmupError` at construction without it) |
 | `servicewright.adapters.health.postgres` / `.redis` | `PostgresHealthCheck(session_maker, timeout=5.0)`, `RedisHealthCheck(client, timeout=5.0)` — import from the submodule, not the package |
 | `servicewright.testing` | `FakeContainer`, `FakeScope`, `FakeSettings`, `FakeEntrypoint` |
 
@@ -370,8 +373,9 @@ Each `*Plugin` takes exactly the same arguments as its entrypoint and exposes `.
    not want taking the API down.
 8. **Signals are installed only when you do not pass `stop`.** `await service.run(settings,
    stop=my_event)` installs none — that is the embedding and test path, and you own
-   SIGINT/SIGTERM. A second signal on the owned path exits immediately with `128 + signum`,
-   skipping every remaining cleanup step.
+   SIGINT/SIGTERM. Call `install_signal_handlers(my_event)` yourself to get the same handlers
+   back, and its return value to remove them. A second signal on the owned path exits
+   immediately with `128 + signum`, skipping every remaining cleanup step.
 9. **Which base class you extend decides who opens the unit scope.** `ServerEntrypoint`
    exposes no `unit_scope` at all, because the transport adapter's middleware or interceptor
    opens it per request. `ScopedEntrypoint.unit_scope()` is the only sanctioned per-unit API

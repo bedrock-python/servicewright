@@ -4,10 +4,17 @@ import asyncio
 import logging
 from typing import Any
 
-from aiokafka.errors import KafkaError
-
 from ...core.contracts.warmer import AsyncWarmer
 from ...core.exceptions import KafkaProducerWarmupError
+
+# Optional dependency: aiokafka, needed only to tell a broker failure from any
+# other one. Without it every failure takes the KafkaError branch of warmup().
+try:
+    from aiokafka.errors import KafkaError as _KafkaError
+
+    KafkaError: Any = _KafkaError
+except ImportError:
+    KafkaError = Exception
 
 logger = logging.getLogger(__name__)
 
