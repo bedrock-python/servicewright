@@ -7,8 +7,8 @@ from typing import Any
 from ...core.contracts.warmer import AsyncWarmer
 from ...core.exceptions import KafkaProducerWarmupError
 
-# Optional dependency: aiokafka. The producer is duck-typed, so the SDK is only
-# needed to narrow the failure it raises; without it every failure is unexpected.
+# Optional dependency: aiokafka, needed only to tell a broker failure from any
+# other one. Without it every failure takes the KafkaError branch of warmup().
 try:
     from aiokafka.errors import KafkaError as _KafkaError
 
