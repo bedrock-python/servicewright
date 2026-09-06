@@ -1,3 +1,7 @@
+---
+copy_page: false
+---
+
 # API reference: `servicewright.testing`
 
 In-memory doubles for testing services, entrypoints and containers. No dependencies, no extra.

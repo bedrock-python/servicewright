@@ -1,3 +1,7 @@
+---
+copy_page: false
+---
+
 # API reference: `servicewright`
 
 Everything importable from the top-level package. This is the public vocabulary — the names here
