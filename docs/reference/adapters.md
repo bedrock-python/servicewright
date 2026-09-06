@@ -1,3 +1,7 @@
+---
+copy_page: false
+---
+
 # API reference: adapters
 
 Every adapter lives behind an [extra](../getting-started/installation.md#extras). Importing one
