@@ -5,8 +5,10 @@ to a failure someone has already had.
 
 ## Lifecycle
 
+- [ ] `drain_delay_seconds` covers your endpoint propagation lag (a few seconds on most clusters).
+      At the default `0.0` the listener closes in the same tick readiness goes red.
 - [ ] `drain_grace_seconds` is at least as long as your slowest normal request or job.
-- [ ] `terminationGracePeriodSeconds` > `drain_grace_seconds + cleanup_timeout_seconds + slack`.
+- [ ] `terminationGracePeriodSeconds` > `drain_delay_seconds + drain_grace_seconds + cleanup_timeout_seconds + slack`.
 - [ ] `cleanup_timeout_seconds` leaves room for the telemetry flush (Sentry and OTLP exports go
       over the network).
 - [ ] Every entrypoint's `essential` flag matches what you want: a failure that must kill the

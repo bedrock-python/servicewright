@@ -51,7 +51,7 @@ Six nouns, and the flow between them.
 
 * **`AppSpec`** — the transport-neutral description of a service: its name, the container
   factory, the lifecycle hooks, the observability manager, the health registry, the warmers
-  and the two shutdown budgets. One `AppSpec` can be run by different processes with
+  and the three shutdown timings. One `AppSpec` can be run by different processes with
   different entrypoint lists; that is how an API and its worker stay one codebase.
 * **`Entrypoint`** — how work enters. Four methods: `bind` (allocate, subscribe, open the
   socket — no traffic yet), `serve(stop=...)` (run until the stop event, then return
@@ -202,9 +202,10 @@ unless a row says otherwise.
 
 | Name | Fields / arguments |
 |---|---|
-| `AppSpec` | `service_name`, `create_container: (TSettings) -> TContainer`, `lifecycle=Lifecycle()`, `observability=ObservabilityManager()`, `health=HealthRegistry()`, `warmers=[]`, `warmers_factory=None`, `drain_grace_seconds=30.0`, `cleanup_timeout_seconds=10.0` |
+| `AppSpec` | `service_name`, `create_container: (TSettings) -> TContainer`, `lifecycle=Lifecycle()`, `observability=ObservabilityManager()`, `health=HealthRegistry()`, `warmers=[]`, `warmers_factory=None`, `drain_grace_seconds=30.0`, `cleanup_timeout_seconds=10.0`, `drain_delay_seconds=0.0` |
 | `BootstrapContext` | `settings`, `service_name`, `container`, `lifecycle` — built by `Host.bootstrap`, before the app scope |
 | `ServiceContext` | `bootstrap`, `app_scope`, `health`, `observability`; properties `.settings`, `.service_name`, `.container`, `.lifecycle`. This is what `bind(ctx)` receives |
+| `DEFAULT_DRAIN_DELAY_SECONDS` | `0.0` |
 | `DEFAULT_DRAIN_GRACE_SECONDS` | `30.0` |
 | `DEFAULT_CLEANUP_TIMEOUT_SECONDS` | `10.0` |
 
@@ -351,17 +352,24 @@ Each `*Plugin` takes exactly the same arguments as its entrypoint and exposes `.
    makes the drain window inert and kills the readiness endpoint before the load balancer
    has stopped routing.
 3. **Readiness flips true only after every `bind()` returned, and false before any drain.**
-   Anything that raises between opening the app scope and the post-start hooks aborts
-   startup, tears down whatever was already bound, and propagates out of `run()`.
+   Between the flip to false and the first `drain()` the Host waits `drain_delay_seconds`
+   (default `0.0`) with every entrypoint still accepting: the flip reaches the load balancer
+   asynchronously, and at `0.0` the listener closes in the same tick, so whatever is still
+   routed to the pod is refused. Set it to the cluster's endpoint propagation lag; it is
+   skipped when the service never reached Ready. Anything that raises between opening the
+   app scope and the post-start hooks aborts startup, tears down whatever was already bound,
+   and propagates out of `run()`.
 4. **Teardown is reverse bind order, and only for entrypoints that were bound.** An
    entrypoint whose `bind` raised halfway is still drained and stopped — it is recorded
    before the await, because a half-bind has already allocated something. A failing
    shutdown step is logged and skipped so the others still get their turn.
 5. **Warmup's budget is a fixed 60 seconds and is not an `AppSpec` field.** Only
-   `drain_grace_seconds` (30.0) and `cleanup_timeout_seconds` (10.0) are configurable. The
-   drain step is allowed `drain_grace_seconds + 5`; every post-drain step gets
-   `cleanup_timeout_seconds`. An overrun raises `DrainTimeoutError` / `CleanupTimeoutError`
-   out of `run()` — but only when nothing else is already propagating.
+   `drain_delay_seconds` (0.0), `drain_grace_seconds` (30.0) and `cleanup_timeout_seconds`
+   (10.0) are configurable. The delay is spent once, before the first drain; the drain step
+   is allowed `drain_grace_seconds + 5`; every post-drain step gets `cleanup_timeout_seconds`.
+   `terminationGracePeriodSeconds` must exceed the sum of all three. An overrun raises
+   `DrainTimeoutError` / `CleanupTimeoutError` out of `run()` — but only when nothing else is
+   already propagating.
 6. **A stop signal during startup abandons startup at the next phase boundary.** Warmup is
    cancelled, `bind` is skipped, readiness stays false, the process goes straight to
    cleanup. A `pre_start` hook cannot assume `serve` will follow.
@@ -452,6 +460,17 @@ async def drain(self, grace: float) -> None:
 
 async def stop(self) -> None:
     await self._server.kill()
+```
+
+```python
+# WRONG — trusting the readiness flip alone to keep a rollout clean
+spec = AppSpec(service_name="orders", create_container=build_container)
+# readiness goes red and the listener closes in the same tick; whatever the load
+# balancer still routes during endpoint propagation is refused
+
+# RIGHT — hold the listeners open for the propagation lag, and budget for it
+spec = AppSpec(service_name="orders", create_container=build_container, drain_delay_seconds=5.0)
+# terminationGracePeriodSeconds > 5 + drain_grace_seconds + cleanup_timeout_seconds
 ```
 
 ```python
@@ -574,7 +593,7 @@ Fetch a page when the task is the one named beside it.
 | [Batch job](blueprints/batch-job.md) | run-once work that still needs the whole lifecycle |
 | [Writing an entrypoint](guides/custom-entrypoint.md) | implementing the four methods for a transport that has no adapter |
 | [Testing](guides/testing.md) | the fakes, asserting lifecycle order, testing entrypoints |
-| [Kubernetes](operations/kubernetes.md) | probes, grace periods, `terminationGracePeriodSeconds`, exit codes |
+| [Kubernetes](operations/kubernetes.md) | probes, `drain_delay_seconds` in place of a `preStop` sleep, `terminationGracePeriodSeconds`, exit codes |
 | [Production checklist](operations/checklist.md) | the once-per-service pass before shipping |
 | [Runbooks](operations/runbooks.md) | a symptom in production: never ready, hung drain, silent metrics |
 | [API reference: servicewright](reference/servicewright.md) | an exact signature or docstring from the top-level package — HTML only, see above |

@@ -148,15 +148,18 @@ Only entrypoints that were actually bound are torn down afterwards.
 **Shutdown** (best-effort, reverse order):
 1. signal → **`health.ready = False` FIRST** (k8s/LB stops routing before we stop accepting;
    liveness stays OK).
-2. `entrypoint.drain(grace)` in reverse — stop intake, finish in-flight within the grace window
+2. wait `AppSpec.drain_delay_seconds` (default 0) with every entrypoint still accepting — the
+   routing layer learns about the flip asynchronously, and nothing closes a listener before the
+   first drain; skipped when the service never reached Ready.
+3. `entrypoint.drain(grace)` in reverse — stop intake, finish in-flight within the grace window
    (`DrainTimeoutError` bounds it; the window comes from `AppSpec.drain_grace_seconds`).
-3. `entrypoint.stop()` in reverse — hard stop, time-boxed by `AppSpec.cleanup_timeout_seconds`
+4. `entrypoint.stop()` in reverse — hard stop, time-boxed by `AppSpec.cleanup_timeout_seconds`
    (`CleanupTimeoutError`); one entrypoint hanging here cannot block the others.
-4. `pre_shutdown` hooks (app scope still alive — flush outbox, emit final events).
-5. close `AppScope` (DI finalizers close pools/clients) — **always**, even on failure.
-6. `observability.shutdown()` (flush traces, stop metrics server; each flush wrapped in
+5. `pre_shutdown` hooks (app scope still alive — flush outbox, emit final events).
+6. close `AppScope` (DI finalizers close pools/clients) — **always**, even on failure.
+7. `observability.shutdown()` (flush traces, stop metrics server; each flush wrapped in
    `asyncio.to_thread` so it never blocks the loop) — best-effort, `suppress(Exception)`.
-7. `post_shutdown` hooks.
+8. `post_shutdown` hooks.
 
 Signals are centralized in `core/signals.py` (win32-safe): the first SIGINT/SIGTERM requests the
 graceful sequence above, a second one exits immediately with `128 + signum` (cleanup can hang, and
