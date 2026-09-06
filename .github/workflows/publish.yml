@@ -72,4 +72,6 @@ jobs:
           grep -m1 '^version = ' pyproject.toml
 
       - run: uv build
-      - run: uv publish
+      # --check-url: a run repeated after a failure skips what is already on the
+      # index instead of failing on it.
+      - run: uv publish --check-url https://pypi.org/simple/servicewright/
