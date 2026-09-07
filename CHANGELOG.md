@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.10.0...servicewright-v0.10.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* an unhandled exception over gRPC is masked instead of sent as UNKNOWN plus its repr ([#52](https://github.com/bedrock-python/servicewright/issues/52)) ([85218f1](https://github.com/bedrock-python/servicewright/commit/85218f1847b3c5031ce61c34ff6e1a7fd459b7c0))
+
 ## [0.10.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.9.1...servicewright-v0.10.0) (2026-09-06)
 
 
