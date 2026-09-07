@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.2](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.10.1...servicewright-v0.10.2) (2026-09-07)
+
+
+### Bug Fixes
+
+* importing the FastAPI adapter without its extra names the extra, not starlette ([#54](https://github.com/bedrock-python/servicewright/issues/54)) ([af1e0e1](https://github.com/bedrock-python/servicewright/commit/af1e0e1ae10f90b7d777a78cec35f66884143943))
+
 ## [0.10.1](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.10.0...servicewright-v0.10.1) (2026-09-07)
 
 
