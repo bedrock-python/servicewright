@@ -27,7 +27,7 @@ from ...core.contracts import ServerEntrypoint
 from ._imports import AsyncMetricsInterceptor, AsyncServer, bind_server_port, create_async_grpc_server, grpc
 from .config import DEFAULT_HEALTH_SERVICE_NAME, GrpcConfig
 from .context import get_default_context_setters
-from .errors import ServiceErrorInterceptor
+from .errors import ServiceErrorInterceptor, UnhandledErrorInterceptor
 from .health import GrpcHealthBridge
 from .interceptors import UnitScopeInterceptor
 from .metrics import GrpcServerMetricsRecorder
@@ -56,10 +56,11 @@ class GrpcEntrypoint(ServerEntrypoint):
         config: Self-contained server configuration (NOT read from settings).
         servicers: Callback registering servicers on the gRPC server.
         interceptors: Static interceptors. They wrap the servicer *inside* the
-            unit-scope and metrics interceptors but *outside* the service-error
-            mapper, so a generic exception handler of yours (e.g. the kit's
-            ``AsyncExceptionHandlerInterceptor``) sees an already-mapped
-            ``AbortError`` instead of swallowing the domain error.
+            unit-scope, unhandled-error and metrics interceptors but *outside*
+            the service-error mapper, so a generic exception handler of yours
+            (e.g. the kit's ``AsyncExceptionHandlerInterceptor``) sees an
+            already-mapped ``AbortError`` instead of swallowing the domain
+            error, and still gets first refusal on everything else.
         interceptors_factory: Optional callback returning extra interceptors,
             resolved at ``bind`` time with the :class:`ServiceContext`.
         context_setters: Bridges that push the per-RPC context (request id, user
@@ -69,7 +70,10 @@ class GrpcEntrypoint(ServerEntrypoint):
         map_service_errors: Convert raised
             :class:`~servicewright.core.errors.ServiceError` into the mapped
             ``grpc.StatusCode`` abort (non-public errors masked). Default
-            ``True``.
+            ``True``. Turning it off does not uninstall
+            :class:`~servicewright.adapters.grpc.UnhandledErrorInterceptor`:
+            a ``ServiceError`` then reaches the client as a masked ``INTERNAL``
+            like any other unhandled exception, never as its own message.
         enable_metrics: Add the RPC metrics interceptor, recording through the
             app's configured metrics sink (``ObsConfig(metrics=...)`` + the
             matching extra, e.g. servicewright[metrics] for prometheus).
@@ -200,6 +204,13 @@ class GrpcEntrypoint(ServerEntrypoint):
         # downstream interceptor and the servicer see a live per-RPC scope.
         setters = get_default_context_setters() if self._context_setters is None else self._context_setters
         interceptors: list[grpc.aio.ServerInterceptor] = [UnitScopeInterceptor(ctx.container, context_setters=setters)]
+
+        # Inside the unit scope (so the masked abort is logged with the RPC's
+        # correlation ids) but outside everything else: nothing below may leave
+        # without a status, and grpc.aio's own answer for an exception it was
+        # not told about is UNKNOWN with repr() of it. Not optional, for the
+        # same reason UnhandledErrorMiddleware is not optional over HTTP.
+        interceptors.append(UnhandledErrorInterceptor())
 
         if self._enable_metrics:
             recorder = GrpcServerMetricsRecorder(ctx.observability.metrics, prefix=self._metrics_prefix)

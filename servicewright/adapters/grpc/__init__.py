@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from .config import GrpcConfig
 from .entrypoint import GrpcEntrypoint, GrpcPlugin, InterceptorFactory, ServicerRegisterer
-from .errors import ERROR_CODE_TRAILING_METADATA, GRPC_STATUS_BY_KIND, ServiceErrorInterceptor
+from .errors import (
+    ERROR_CODE_TRAILING_METADATA,
+    GRPC_STATUS_BY_KIND,
+    ServiceErrorInterceptor,
+    UnhandledErrorInterceptor,
+)
 from .health import GrpcHealthBridge
 from .interceptors import UnitScopeInterceptor, current_unit_scope
 from .metadata import (
@@ -28,6 +33,7 @@ __all__ = [
     "InterceptorFactory",
     "ServiceErrorInterceptor",
     "ServicerRegisterer",
+    "UnhandledErrorInterceptor",
     "UnitScopeInterceptor",
     "current_unit_scope",
     "get_client_context",
