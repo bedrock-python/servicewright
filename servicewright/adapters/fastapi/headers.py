@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Header
+from ._imports import Header
 
 IDEMPOTENCY_KEY_PATTERN = r"^[A-Za-z0-9_\-]+$"
 IDEMPOTENCY_KEY_MAX_LEN = 128

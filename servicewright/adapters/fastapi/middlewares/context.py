@@ -6,8 +6,6 @@ import logging
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from starlette.datastructures import Headers
-
 from ....core.context import (
     bind_context_values,
     current_context,
@@ -16,6 +14,7 @@ from ....core.context import (
     is_safe_context_id,
     set_context_value,
 )
+from .._imports import Headers
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -92,7 +91,7 @@ class ContextMiddleware:
 
         # 2. Extract from cookies (if any).
         if self.cookie_extractors:
-            from starlette.requests import Request
+            from .._imports import Request
 
             request = Request(scope)
             for cookie, ctx_key in self.cookie_extractors.items():

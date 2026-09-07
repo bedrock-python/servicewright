@@ -20,7 +20,7 @@ from __future__ import annotations
 import contextvars
 from typing import TYPE_CHECKING, Annotated
 
-from fastapi import Depends, Request
+from ._imports import Depends, Request
 
 if TYPE_CHECKING:
     from starlette.types import ASGIApp, Receive, Scope, Send

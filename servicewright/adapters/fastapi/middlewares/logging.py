@@ -12,7 +12,7 @@ import re
 import time
 from typing import TYPE_CHECKING
 
-from starlette.datastructures import Headers
+from .._imports import Headers
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
