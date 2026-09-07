@@ -8,10 +8,13 @@ these tests never open a real network socket.
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from typing import Any
 from unittest.mock import MagicMock
 
+import grpc
+import grpc.aio
 import pytest
 from grpc_server_kit.aio.interceptors import AsyncMetricsInterceptor, RpcCall
 
@@ -272,6 +275,29 @@ async def test__grpc_bind__error_mapping_disabled__omits_the_mapper(patched_serv
     assert not any(isinstance(i, ServiceErrorInterceptor) for i in interceptors)
 
 
+async def test__grpc_bind__called__installs_the_unhandled_error_net_inside_the_unit_scope(
+    patched_server: _FakeAsyncServer,
+) -> None:
+    from servicewright.adapters.grpc import UnhandledErrorInterceptor
+
+    ep = GrpcEntrypoint(config=GrpcConfig(), servicers=lambda _s, _c: None)
+    await ep.bind(_make_service_ctx(FakeContainer()))
+    interceptors = patched_server.create_calls[0]["interceptors"]  # type: ignore[attr-defined]
+    # Second: the correlation ids the unit scope binds are on the masked abort's log line.
+    assert isinstance(interceptors[1], UnhandledErrorInterceptor)
+
+
+async def test__grpc_bind__error_mapping_disabled__still_installs_the_unhandled_error_net(
+    patched_server: _FakeAsyncServer,
+) -> None:
+    from servicewright.adapters.grpc import UnhandledErrorInterceptor
+
+    ep = GrpcEntrypoint(config=GrpcConfig(), servicers=lambda _s, _c: None, map_service_errors=False)
+    await ep.bind(_make_service_ctx(FakeContainer()))
+    interceptors = patched_server.create_calls[0]["interceptors"]  # type: ignore[attr-defined]
+    assert any(isinstance(i, UnhandledErrorInterceptor) for i in interceptors)
+
+
 async def test__grpc_bind__async_servicer_registerer__awaits_it(patched_server: _FakeAsyncServer) -> None:
     called: list[str] = []
 
@@ -369,9 +395,9 @@ async def test__grpc_bind__metrics_enabled__adds_the_metrics_interceptor(patched
     await ep.bind(_make_service_ctx(FakeContainer(), service_name="metered", observability=manager))
 
     interceptors = patched_server.create_calls[0]["interceptors"]  # type: ignore[attr-defined]
-    # UnitScope first, the kit's metrics interceptor second.
+    # UnitScope first, the unhandled-error net second, the kit's metrics interceptor third.
     assert isinstance(interceptors[0], UnitScopeInterceptor)
-    assert isinstance(interceptors[1], AsyncMetricsInterceptor)
+    assert isinstance(interceptors[2], AsyncMetricsInterceptor)
     # The recorder minted the frozen instruments with the prefix applied.
     assert sink.counters == ["myprefix_grpc_requests_total"]
     assert sink.histograms == ["myprefix_grpc_request_duration_seconds"]
@@ -393,7 +419,7 @@ async def test__grpc_bind__metrics_enabled_without_a_sink__records_into_null_ins
     await ep.bind(_make_service_ctx(FakeContainer()))
 
     interceptors = patched_server.create_calls[0]["interceptors"]  # type: ignore[attr-defined]
-    assert isinstance(interceptors[1], AsyncMetricsInterceptor)
+    assert isinstance(interceptors[2], AsyncMetricsInterceptor)
 
 
 class _RecordingRecorder:
@@ -743,6 +769,109 @@ async def test__service_error_interceptor__other_exception__passes_it_through() 
         async with ServiceErrorInterceptor().around(_make_call(context, "/pkg.Svc/Rpc")):
             raise RuntimeError("boom")
 
+    assert context.aborts == []
+
+
+# --------------------------------------------------------------------------- #
+# UnhandledErrorInterceptor: the last-resort mask
+# --------------------------------------------------------------------------- #
+async def test__unhandled_error_interceptor__unexpected_exception__aborts_with_a_masked_internal() -> None:
+    # Arrange
+    import grpc as grpc_lib
+
+    from servicewright.adapters.grpc import ERROR_CODE_TRAILING_METADATA, UnhandledErrorInterceptor
+
+    context = _AbortRecordingContext()
+
+    # Act
+    with pytest.raises(_AbortedSentinelError):
+        async with UnhandledErrorInterceptor().around(_make_call(context, "/pkg.Svc/Rpc")):
+            raise RuntimeError("dsn=postgres://user:pw@db/ledger")
+
+    # Assert
+    (code, details, trailing) = context.aborts[0]
+    assert code == grpc_lib.StatusCode.INTERNAL
+    assert details == "internal_error"
+    assert trailing == ((ERROR_CODE_TRAILING_METADATA, "internal_error"),)
+    # Without the mask grpc.aio answers UNKNOWN with repr() of the exception.
+    assert "postgres" not in details
+
+
+async def test__unhandled_error_interceptor__unexpected_exception__logs_it_with_the_traceback(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Arrange
+    from servicewright.adapters.grpc import UnhandledErrorInterceptor
+
+    context = _AbortRecordingContext()
+
+    # Act
+    with caplog.at_level(logging.ERROR), pytest.raises(_AbortedSentinelError):
+        async with UnhandledErrorInterceptor().around(_make_call(context, "/pkg.Svc/Rpc")):
+            raise RuntimeError("dsn=postgres://user:pw@db/ledger")
+
+    # Assert
+    record = next(r for r in caplog.records if "Unhandled exception while serving RPC" in r.message)
+    assert record.exc_info is not None
+    assert record.__dict__["grpc_method"] == "/pkg.Svc/Rpc"
+
+
+async def test__unhandled_error_interceptor__service_error__masks_it_too() -> None:
+    # Arrange
+    import grpc as grpc_lib
+
+    from servicewright import ErrorKind, ServiceError
+    from servicewright.adapters.grpc import UnhandledErrorInterceptor
+
+    context = _AbortRecordingContext()
+
+    # Act — with map_service_errors=False nothing maps it first.
+    with pytest.raises(_AbortedSentinelError):
+        async with UnhandledErrorInterceptor().around(_make_call(context, "/pkg.Svc/Rpc")):
+            raise ServiceError("no such user", code="user_missing", kind=ErrorKind.NOT_FOUND)
+
+    # Assert
+    (code, details, _trailing) = context.aborts[0]
+    assert code == grpc_lib.StatusCode.INTERNAL
+    assert "user_missing" not in details
+
+
+@pytest.mark.parametrize(
+    "deliberate",
+    [
+        pytest.param(grpc.aio.AbortError("already aborted"), id="abort-error"),
+        pytest.param(grpc.RpcError("already failed"), id="rpc-error"),
+    ],
+)
+async def test__unhandled_error_interceptor__status_already_chosen__passes_it_through(
+    deliberate: Exception,
+) -> None:
+    # Arrange
+    from servicewright.adapters.grpc import UnhandledErrorInterceptor
+
+    context = _AbortRecordingContext()
+
+    # Act
+    with pytest.raises(type(deliberate)):
+        async with UnhandledErrorInterceptor().around(_make_call(context, "/pkg.Svc/Rpc")):
+            raise deliberate
+
+    # Assert
+    assert context.aborts == []
+
+
+async def test__unhandled_error_interceptor__caller_cancelled__passes_it_through() -> None:
+    # Arrange
+    from servicewright.adapters.grpc import UnhandledErrorInterceptor
+
+    context = _AbortRecordingContext()
+
+    # Act
+    with pytest.raises(asyncio.CancelledError):
+        async with UnhandledErrorInterceptor().around(_make_call(context, "/pkg.Svc/Rpc")):
+            raise asyncio.CancelledError
+
+    # Assert
     assert context.aborts == []
 
 
@@ -1151,6 +1280,28 @@ async def test__grpc_entrypoint_bind__user_interceptors_supplied__error_mapper_s
     assert isinstance(chain[0], UnitScopeInterceptor)
     assert isinstance(chain[-1], ServiceErrorInterceptor)
     assert chain.index(user_static) < chain.index(user_factory) < len(chain) - 1
+
+
+async def test__grpc_entrypoint_bind__user_interceptors_supplied__unhandled_error_net_stays_outside_them(
+    patched_server: _FakeAsyncServer,
+) -> None:
+    # Arrange
+    from servicewright.adapters.grpc.errors import UnhandledErrorInterceptor
+
+    user_static = MagicMock(name="static")
+    ep = GrpcEntrypoint(
+        config=GrpcConfig(port=0),
+        servicers=lambda _s, _c: None,
+        interceptors=[user_static],
+    )
+
+    # Act
+    await ep.bind(_make_service_ctx(FakeContainer()))
+
+    # Assert — an exception type you map yourself reaches your interceptor first.
+    chain = patched_server.create_calls[0]["interceptors"]
+    net = next(i for i in chain if isinstance(i, UnhandledErrorInterceptor))
+    assert chain.index(net) < chain.index(user_static)
 
 
 async def test__grpc_entrypoint_bind__error_mapping_disabled__omits_the_mapper(

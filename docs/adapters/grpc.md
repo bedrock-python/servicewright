@@ -90,18 +90,43 @@ real code only reaches your logs. The full mapping table is in
 
 Turn it off with `map_service_errors=False`.
 
+## Anything that is not a `ServiceError`
+
+`UnhandledErrorInterceptor` is the last resort, and it is always installed:
+
+```python
+raise RuntimeError("dividing by the number of retries, which is zero")
+# → the RPC aborts with INTERNAL
+# → details "internal_error", trailing metadata "x-error-code: internal_error"
+# → the exception and its traceback go to the log, with the RPC's correlation ids
+```
+
+Byte for byte what a `public=False` `ServiceError` produces, which is the point: the two are
+indistinguishable to a caller. Without it `grpc.aio` answers `UNKNOWN` with `repr()` of the
+exception, so the one error class whose wording nobody reviewed is the one that reaches the wire
+verbatim.
+
+Three things are left alone, because each already carries a decision:
+`grpc.aio.AbortError` and `grpc.RpcError` (a status a handler chose itself) are re-raised, and
+`asyncio.CancelledError` never reaches it — a caller that walked away is not a failure to report.
+
+`map_service_errors=False` does not remove it. That flag turns off the mapping of the errors you
+declared; with it off a `ServiceError` reaches the client as a masked `INTERNAL` like any other
+unhandled exception, never as its own message.
+
 ## Interceptor ordering
 
 `grpc.aio` hands control in list order, so the first entry is the **outermost** wrapper. The
 entrypoint assembles the chain like this:
 
 ```
-UnitScopeInterceptor          ← outermost: everything below sees a live scope
-  metrics interceptor         ← records the status the client actually receives
-    your static interceptors
-    your interceptors_factory results
-      ServiceErrorInterceptor ← innermost: closest to the servicer
-        your servicer
+UnitScopeInterceptor            ← outermost: everything below sees a live scope
+  UnhandledErrorInterceptor     ← the net: inside the scope, so the log is correlated
+    metrics interceptor         ← records the status the client actually receives
+      your static interceptors
+      your interceptors_factory results
+        ServiceErrorInterceptor ← innermost: closest to the servicer
+          your servicer
 ```
 
 !!! warning "Why `ServiceErrorInterceptor` is innermost"
@@ -112,6 +137,15 @@ UnitScopeInterceptor          ← outermost: everything below sees a live scope
     error and turn a deliberate `NOT_FOUND` into a 500-equivalent.
 
     It still sits *inside* the metrics interceptor, so aborts are recorded with their real status.
+
+!!! note "Why `UnhandledErrorInterceptor` is not"
+
+    It is the mirror of the HTTP stack's `UnhandledErrorMiddleware`, and it sits at the same
+    depth: inside the layer that binds the correlation ids, so the masked abort is logged with
+    the request id, and outside everything else, so it only ever sees what nobody below it
+    claimed. An interceptor of yours that maps an exception type of its own still gets it first —
+    including grpc-server-kit's `AsyncExceptionHandlerInterceptor`, if that is the mapping you
+    want. Compose exactly as before.
 
 ```python
 GrpcEntrypoint(

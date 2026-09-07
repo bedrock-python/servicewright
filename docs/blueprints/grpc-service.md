@@ -13,7 +13,8 @@ pip install "servicewright[grpc,dishka,postgres,metrics,observability]"
 flowchart LR
     C["gRPC clients"] --> EP["GrpcEntrypoint<br/>:50051"]
     EP --> I1["UnitScopeInterceptor"]
-    I1 --> I2["metrics"]
+    I1 --> I0["UnhandledErrorInterceptor"]
+    I0 --> I2["metrics"]
     I2 --> I3["your interceptors"]
     I3 --> I4["ServiceErrorInterceptor"]
     I4 --> S["Servicers"]
@@ -97,15 +98,18 @@ Your interceptors land between the framework's:
 
 ```
 UnitScopeInterceptor        ← scope is live for everything below
-  metrics                   ← records the status the client receives
-    AuthInterceptor         ← yours
-    LoggingInterceptor      ← yours
-      ServiceErrorInterceptor
-        OrdersServicer
+  UnhandledErrorInterceptor ← nothing below leaves without a status
+    metrics                 ← records the status the client receives
+      AuthInterceptor       ← yours
+      LoggingInterceptor    ← yours
+        ServiceErrorInterceptor
+          OrdersServicer
 ```
 
 That is why a generic "map everything to INTERNAL" interceptor of yours cannot swallow a
 deliberate `NOT_FOUND`: the domain error has already become an abort by the time it reaches you.
+And it is why anything your interceptors do *not* map still reaches the client as `INTERNAL` with
+`x-error-code: internal_error` rather than as `UNKNOWN` plus the exception's own text.
 
 ## 4. main
 

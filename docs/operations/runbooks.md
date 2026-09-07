@@ -192,6 +192,10 @@ Check, in order:
 `ServiceErrorInterceptor` is installed innermost precisely so your own interceptors cannot
 intercept the domain error first — but code inside the servicer still can.
 
+With the mapper off, `UnhandledErrorInterceptor` stays: an unmapped `ServiceError` then arrives as
+a masked `INTERNAL` with `x-error-code: internal_error`, exactly like an exception nobody
+declared. The log line next to it carries the real one.
+
 ### Validation errors have a different shape than the rest
 
 They should not — every default handler renders through the same renderer. A 422 with a foreign
