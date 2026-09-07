@@ -251,11 +251,16 @@ once per run inside the application scope and appended to `spec.warmers`.
 | `ErrorKind` | `INVALID`, `UNAUTHENTICATED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `PRECONDITION_FAILED`, `TOO_MANY_REQUESTS`, `DEADLINE_EXCEEDED`, `UNAVAILABLE`, `NOT_IMPLEMENTED`, `INTERNAL` | 400/401/403/404/409/412/429/504/503/501/500 over HTTP |
 | `ErrorInfo` | `kind`, `code`, `detail=None`, `params={}`, `public=True`, `status_override=None`, `headers=None`; `.http_status`; `ErrorInfo.from_service_error(exc)` | the normalized view every renderer takes |
 | `mask_private_error` | `mask_private_error(info) -> ErrorInfo` | `public=False` collapses to a generic `internal_error` 500 |
+| `INTERNAL_ERROR_CODE` | `"internal_error"` | the code every masked error renders as, on both transports |
 | `RenderedError` | `status_code`, `body`, `media_type="application/problem+json"`, `headers=None` | |
 | `ProblemDetailsRenderer` | `ProblemDetailsRenderer(*, type_base=None)` | RFC 9457; the default renderer |
 
-`HTTP_STATUS_BY_KIND`, `status_title` and `to_json_safe` live in
+`HTTP_STATUS_BY_KIND`, `INTERNAL_ERROR_CODE`, `status_title` and `to_json_safe` live in
 `servicewright.core.errors` and are not re-exported at the top level.
+
+`ErrorKind.CONFLICT` maps to `ALREADY_EXISTS` and not to `ABORTED`: both mean 409, but `ABORTED`
+tells the client to retry at a higher level, which a state conflict will not survive. Both status
+tables are injective, so a status maps back to exactly one kind.
 
 ### Request context
 
@@ -308,7 +313,7 @@ installed and raise (or degrade) at construction instead.
 |---|---|
 | `servicewright.adapters.fastapi` | `FastApiEntrypoint`, `FastApiPlugin`, `HttpConfig`, `MiddlewareConfig`, `HealthConfig`, `CORSMiddlewareConfig`, `LoggingMiddlewareConfig`, `GZipMiddlewareConfig`, `CorrelationIdMiddlewareConfig`, `MetricsInstrumentatorConfig`, `UnitScopeDep`, `UnitScopeMiddleware`, `get_unit_scope`, `current_unit_scope`, `setup_default_exception_handlers`, `setup_metrics_instrumentator`, `LivenessResponse`, `ReadinessResponse`, `ProblemDetails`, `XUserId`, `IdempotencyKey`, `AuthorizationHeader`, `XFingerprintHeader`, `OtelBaggageSetter`, `StructlogSetter`, `get_default_context_setters`, `RoutesRegisterer`, `ConfigureApp` |
 | `servicewright.adapters.litestar` | `LitestarEntrypoint`, `LitestarPlugin`, `LitestarConfig`, `HealthConfig`, `build_health_routes`, `UnitScopeMiddleware`, `get_unit_scope`, `current_unit_scope`, `RouteRegisterer`, `ConfigureApp` |
-| `servicewright.adapters.grpc` | `GrpcEntrypoint`, `GrpcPlugin`, `GrpcConfig`, `ServicerRegisterer`, `InterceptorFactory`, `ServiceErrorInterceptor`, `GRPC_STATUS_BY_KIND`, `ERROR_CODE_TRAILING_METADATA`, `GrpcHealthBridge`, `UnitScopeInterceptor`, `current_unit_scope`, `GrpcServerMetricsRecorder`, `IDEMPOTENCY_KEY_METADATA`, `get_idempotency_key`, `get_client_ip`, `get_user_agent`, `get_client_context` |
+| `servicewright.adapters.grpc` | `GrpcEntrypoint`, `GrpcPlugin`, `GrpcConfig`, `ServicerRegisterer`, `InterceptorFactory`, `ServiceErrorInterceptor`, `UnhandledErrorInterceptor`, `GRPC_STATUS_BY_KIND`, `ERROR_CODE_TRAILING_METADATA`, `GrpcHealthBridge`, `UnitScopeInterceptor`, `current_unit_scope`, `GrpcServerMetricsRecorder`, `IDEMPOTENCY_KEY_METADATA`, `get_idempotency_key`, `get_client_ip`, `get_user_agent`, `get_client_context` |
 | `servicewright.adapters.apscheduler4` (and `.apscheduler3`) | `SchedulerEntrypoint`, `SchedulerPlugin`, `ScheduledJob`, `ScheduledJobFunc`, `SchedulerJobMetricsRecorder`, `SchedulerError`, `DuplicateScheduleError` |
 | `servicewright.adapters.dishka` | `DishkaContainer`, `DishkaScope` |
 | `servicewright.adapters.settings` | `BaseServiceSettings`, `LoggingSettings`, `MetricsSettings`, `TracingSettings`, `ErrorTrackingSettings` |
@@ -333,7 +338,9 @@ Entrypoint constructors, all keyword-only:
   context_setters=None, map_service_errors=True, enable_metrics=False,
   metrics_prefix=None, kind="grpc", essential=True)`. `GrpcConfig` defaults:
   `port=50051`, `grace_period=30.0`, `enable_reflection=False`, `enable_channelz=False`,
-  `health_service_names=()`, `health_refresh_interval=5.0`.
+  `health_service_names=()`, `health_refresh_interval=5.0`. Interceptor chain, outermost first:
+  `UnitScopeInterceptor`, `UnhandledErrorInterceptor`, metrics, yours,
+  `ServiceErrorInterceptor`.
 * `SchedulerEntrypoint(jobs, enable_metrics=False, metrics_prefix=None,
   kind="scheduler", essential=True)`; `ScheduledJob(id, func, trigger, args=(), kwargs={},
   max_instances=None, misfire_grace_time=None, coalesce=None)`.
@@ -420,7 +427,13 @@ Each `*Plugin` takes exactly the same arguments as its entrypoint and exposes `.
 16. **`ServiceError(public=False)` masks everything at the transport**: the client gets a
     generic `internal_error` 500 (or `INTERNAL` over gRPC) and the real code only reaches the
     log. A subclass's `code` is derived from its class name, so renaming the class is a wire
-    change.
+    change. **An exception that is not a `ServiceError` is masked identically**, by
+    `UnhandledErrorMiddleware` over HTTP and `UnhandledErrorInterceptor` over gRPC — both
+    installed unconditionally, neither removed by `default_exception_handlers=False` or
+    `map_service_errors=False`, which only stop the mapping of the errors you declared. So a
+    caller cannot tell an error you hid from one you never knew about, and no exception text
+    reaches the wire. Do not catch-and-return an exception in a handler or servicer to "make the
+    error nicer": that is the one way to get its message back onto the wire.
 17. **One unit scope per request, not two.** If the DI framework's own integration owns the
     request scope (dishka's `setup_dishka`), switch servicewright's off —
     `MiddlewareConfig(unit_scope=False)` or `LitestarConfig(unit_scope=False)` — otherwise

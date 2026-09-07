@@ -44,6 +44,9 @@ to a failure someone has already had.
       `to_json_safe`.
 - [ ] A masked 500 still carries the request id (it does by default — do not move the
       unhandled-error layer).
+- [ ] Nothing catches a broad `Exception` in a handler or servicer and returns its `str()` to
+      the client. The unhandled-error layer masks what reaches it; a message you re-raise
+      yourself as a public error is yours to have read.
 
 ## Observability
 

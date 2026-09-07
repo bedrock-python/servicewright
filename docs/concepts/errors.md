@@ -13,6 +13,7 @@ servicewright solves that with three replaceable pieces:
 ```mermaid
 flowchart LR
     E["raise OrderNotFoundError"] --> N["ErrorInfo<br/>kind · code · detail · params · public"]
+    X["raise anything else"] --> N
     N --> M["mask_private_error()"]
     M --> R["HttpErrorRenderer"]
     M --> K["ErrorKind → grpc.StatusCode"]
@@ -66,6 +67,17 @@ except ServiceError as exc:
 | `DEADLINE_EXCEEDED` | 504 | `DEADLINE_EXCEEDED` |
 | `INTERNAL` | 500 | `INTERNAL` |
 
+Both columns are injective, so a status maps back to exactly one kind — which is what lets a
+gateway translate between the two without guessing.
+
+One row is worth stating out loud, because it has a plausible-looking alternative: `CONFLICT`
+renders as `ALREADY_EXISTS` and not as `ABORTED`, although both mean 409 to a gRPC gateway.
+`ABORTED` is the transaction-conflict code, and the gRPC contract tells clients to retry it at a
+higher level — the wrong advice for "this order was already paid", which will never succeed on a
+retry. `FAILED_PRECONDITION` is spoken for by `PRECONDITION_FAILED`. A client that has to tell a
+duplicate key from a state conflict branches on `x-error-code`, which carries the exact code
+either way, rather than on the status.
+
 ## What the client sees
 
 Over HTTP, an RFC 9457 problem document with `Content-Type: application/problem+json`:
@@ -110,6 +122,34 @@ leak through a custom renderer by accident.
         kind = ErrorKind.INTERNAL
         public = False
     ```
+
+## Errors you never declared
+
+An exception that is not a `ServiceError` at all — a `KeyError` off a dict, a `RuntimeError` from
+a driver — is masked the same way, and by the same rule, on both transports:
+
+| | HTTP | gRPC |
+| --- | --- | --- |
+| status | 500 | `INTERNAL` |
+| machine code | `"code": "internal_error"` | `x-error-code: internal_error` |
+| message | none | `internal_error` |
+| the exception itself | logged with its traceback | logged with its traceback |
+
+So a caller cannot tell an error you hid from an error you never knew about, and neither one
+carries a sentence you did not write. That matters most for the second kind, because its wording
+is whatever a library chose: an exception text is where a DSN with a password, a failing row or a
+file path ends up.
+
+Over HTTP this is `UnhandledErrorMiddleware` plus the `Exception` handler; over gRPC it is
+`UnhandledErrorInterceptor`. Both are installed unconditionally, and neither one is what
+`map_service_errors=False` or `default_exception_handlers=False` turns off — those switch off the
+mapping of the errors you *did* declare, and an undeclared exception then reaches the client as a
+masked internal error rather than as its own message.
+
+!!! warning "The gRPC default without it"
+
+    `grpc.aio` answers an exception it was not told about with `UNKNOWN` and `repr()` of it —
+    status code and message both chosen by the transport, out of material nobody reviewed.
 
 ## Own the wire format
 
@@ -172,6 +212,18 @@ from servicewright.core.errors import status_title, to_json_safe
 | `ServiceError` | its kind's status; masked when `public=False` |
 | Deadline exceeded | 504, `code="deadline_exceeded"` |
 | Anything unhandled | masked 500, logged with the request id — and the response carries that id too |
+
+## The gRPC equivalents
+
+| Situation | Result |
+| --- | --- |
+| `ServiceError` | its kind's status; masked when `public=False` |
+| Anything unhandled | `INTERNAL`, `x-error-code: internal_error`, logged with the correlation ids |
+| A handler that called `context.abort()` itself | left alone — the status was already chosen |
+| The caller went away (`CancelledError`) | left alone — not an error to report |
+
+The two interceptors doing that sit at different depths of the chain, and
+[the adapter page](../adapters/grpc.md#interceptor-ordering) explains why.
 
 Add handlers for your own exception types, or switch the defaults off entirely:
 
