@@ -338,7 +338,13 @@ Entrypoint constructors, all keyword-only:
   context_setters=None, map_service_errors=True, enable_metrics=False,
   metrics_prefix=None, kind="grpc", essential=True)`. `GrpcConfig` defaults:
   `port=50051`, `grace_period=30.0`, `enable_reflection=False`, `enable_channelz=False`,
-  `health_service_names=()`, `health_refresh_interval=5.0`. Interceptor chain, outermost first:
+  `health_service_names=()`, `health_refresh_interval=5.0`.
+  `GrpcConfig.from_settings(settings, *, health_service_names=(), health_refresh_interval=5.0,
+  reflection_service_names=None)` reads every other field off anything satisfying
+  grpc-server-kit's `GrpcServerSettingsProtocol` (`BaseGrpcServerSettings`, `GrpcServerConfig`),
+  the kit's defaults included (`[::]`, `grace_period=5.0`); the three keywords are the fields no
+  settings object carries, and `health_refresh_interval` is deliberately not the kit's
+  `health.cache_ttl` (opposite meaning at `0`). Interceptor chain, outermost first:
   `UnitScopeInterceptor`, `UnhandledErrorInterceptor`, metrics, yours,
   `ServiceErrorInterceptor`.
 * `SchedulerEntrypoint(jobs, enable_metrics=False, metrics_prefix=None,
@@ -593,7 +599,7 @@ Fetch a page when the task is the one named beside it.
 | [Adapters overview](adapters/overview.md) | which adapter family solves the problem in front of you |
 | [FastAPI](adapters/fastapi.md) | the HTTP entrypoint, its middleware stack, probes, per-request scope |
 | [Litestar](adapters/litestar.md) | the lean HTTP entrypoint and how it differs from the FastAPI one |
-| [gRPC](adapters/grpc.md) | servicers, interceptors, the health bridge, error mapping, reflection |
+| [gRPC](adapters/grpc.md) | servicers, interceptors, the health bridge, error mapping, reflection, `GrpcConfig.from_settings` |
 | [Scheduler](adapters/scheduler.md) | cron and interval jobs, triggers, the 3.x/4.x split |
 | [Daemon and one-shot](adapters/daemon-and-oneshot.md) | loops and batch jobs with nothing installed |
 | [dishka](adapters/dishka.md) | binding dishka, and who owns the request scope |
