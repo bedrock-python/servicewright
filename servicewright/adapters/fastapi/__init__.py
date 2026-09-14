@@ -32,6 +32,16 @@ from .headers import (
 )
 from .metrics import setup_metrics_instrumentator
 from .schemas import LivenessResponse, ProblemDetails, ReadinessResponse
+from .settings import (
+    CorrelationIdMiddlewareSettings,
+    CORSMiddlewareSettings,
+    GZipMiddlewareSettings,
+    HealthSettings,
+    HttpServerSettings,
+    LoggingMiddlewareSettings,
+    MiddlewareSettings,
+    UvicornSettings,
+)
 from .unit_scope import (
     UnitScopeDep,
     UnitScopeMiddleware,
@@ -42,18 +52,25 @@ from .unit_scope import (
 __all__ = [
     "AuthorizationHeader",
     "CORSMiddlewareConfig",
+    "CORSMiddlewareSettings",
     "ConfigureApp",
     "CorrelationIdMiddlewareConfig",
+    "CorrelationIdMiddlewareSettings",
     "FastApiEntrypoint",
     "FastApiPlugin",
     "GZipMiddlewareConfig",
+    "GZipMiddlewareSettings",
     "HealthConfig",
+    "HealthSettings",
     "HttpConfig",
+    "HttpServerSettings",
     "IdempotencyKey",
     "LivenessResponse",
     "LoggingMiddlewareConfig",
+    "LoggingMiddlewareSettings",
     "MetricsInstrumentatorConfig",
     "MiddlewareConfig",
+    "MiddlewareSettings",
     "OtelBaggageSetter",
     "ProblemDetails",
     "ReadinessResponse",
@@ -61,6 +78,7 @@ __all__ = [
     "StructlogSetter",
     "UnitScopeDep",
     "UnitScopeMiddleware",
+    "UvicornSettings",
     "XFingerprintHeader",
     "XUserId",
     "current_unit_scope",

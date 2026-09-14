@@ -6,7 +6,7 @@ logs, Prometheus metrics, RFC 9457 errors and a Kubernetes-correct shutdown.
 Copy it, rename it, delete what you do not need.
 
 ```bash
-pip install "servicewright[fastapi,dishka,postgres,metrics,observability]"
+pip install "servicewright[fastapi,dishka,postgres,metrics,observability,settings]"
 ```
 
 ## What you are building
@@ -27,16 +27,10 @@ flowchart LR
 ## 1. Settings
 
 ```python title="runtime/settings.py"
-from pydantic import BaseModel
 from pydantic_settings import SettingsConfigDict
 
+from servicewright.adapters.fastapi import HttpServerSettings
 from servicewright.adapters.settings import BaseServiceSettings
-
-
-class HttpSettings(BaseModel):
-    host: str = "0.0.0.0"
-    port: int = 8000
-    cors_origins: list[str] = []
 
 
 class Settings(BaseServiceSettings):
@@ -44,13 +38,19 @@ class Settings(BaseServiceSettings):
 
     database_dsn: str
 
-    http: HttpSettings = HttpSettings()
+    server: HttpServerSettings = HttpServerSettings()
 ```
 
 The observability sections come from `BaseServiceSettings` (`servicewright[settings]`): logging
 on, the metrics sink on with no standalone server (the API exposes `/system/metrics` on its own
 port), tracing and error tracking off until `TRACING__COLLECTOR_URL` / `ERROR_TRACKING__DSN` are
 set. See [Settings](../concepts/settings.md#shipped-models).
+
+`server` is the FastAPI adapter's `HttpServerSettings`: `HttpConfig`, its `HealthConfig` and the
+`MiddlewareConfig` as one nested model, the uvicorn knobs typed, so everything the entrypoint reads
+from the environment is `SERVER__*` — `SERVER__PORT`, `SERVER__UVICORN__TIMEOUT_KEEP_ALIVE`,
+`SERVER__MIDDLEWARES__CORS__ALLOW_ORIGINS`. See
+[From settings](../adapters/fastapi.md#from-settings).
 
 ## 2. Container
 
@@ -212,24 +212,21 @@ def build_spec(settings: Settings) -> AppSpec:
 ## 6. The entrypoint and main
 
 ```python title="runtime/entrypoints.py"
-from servicewright.adapters.fastapi import CORSMiddlewareConfig, FastApiEntrypoint, HttpConfig, MiddlewareConfig
+from servicewright.adapters.fastapi import FastApiEntrypoint
 
 
 def build_http(settings: Settings) -> FastApiEntrypoint:
     return FastApiEntrypoint(
-        config=HttpConfig(
-            host=settings.http.host,
-            port=settings.http.port,
-            version=settings.app_version,
-            graceful_timeout=10.0,
-        ),
+        config=settings.server.to_config(version=settings.app_version),
+        middlewares=settings.server.middlewares.to_config(),
         routers=(orders_router,),
-        middlewares=MiddlewareConfig(
-            cors=CORSMiddlewareConfig(allow_origins=settings.http.cors_origins),
-        ),
         metrics=True,
     )
 ```
+
+`to_config()` is the whole mapping: host, port, the 10 s graceful timeout, the probe paths and
+whatever `SERVER__UVICORN__*` the deployment sets. `version` is the one thing it takes from you —
+the OpenAPI version is the application's.
 
 ```python title="api_main.py"
 import asyncio
@@ -264,7 +261,7 @@ spec:
           env:
             - name: DATABASE_DSN
               valueFrom: { secretKeyRef: { name: orders-db, key: dsn } }
-            - name: HTTP__CORS_ORIGINS
+            - name: SERVER__MIDDLEWARES__CORS__ALLOW_ORIGINS
               value: '["https://app.example.com"]'
           livenessProbe:
             httpGet: { path: /system/health/livez, port: 8000 }

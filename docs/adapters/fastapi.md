@@ -89,6 +89,111 @@ FastApiEntrypoint(
 | `uvicorn_kwargs` | `{}` | Merged into the `uvicorn.Config(...)` call |
 | `health` | `HealthConfig()` | Probe routes: `enabled`, `liveness_path`, `readiness_path` |
 
+### From settings
+
+The environment-facing side of the same field set ships with the adapter: `HttpServerSettings`,
+one pydantic model per config dataclass — `HealthSettings`, `MiddlewareSettings` with its four
+middleware sections, `UvicornSettings` — same field names, same defaults, `to_config()` on each.
+Nest it in your settings object (`servicewright[settings]`'s `BaseServiceSettings`, or a
+`BaseSettings` of your own with `env_nested_delimiter="__"`) and the mapping lives here rather than
+in each service:
+
+```python
+from servicewright.adapters.fastapi import FastApiEntrypoint, HttpServerSettings
+from servicewright.adapters.settings import BaseServiceSettings
+
+
+class Settings(BaseServiceSettings):
+    server: HttpServerSettings = HttpServerSettings()
+
+
+settings = Settings()
+http = FastApiEntrypoint(
+    config=settings.server.to_config(version=settings.app_version),
+    middlewares=settings.server.middlewares.to_config(),
+    routers=(router,),
+)
+```
+
+```bash
+SERVER__PORT=8080
+SERVER__GRACEFUL_TIMEOUT=15
+SERVER__HEALTH__READINESS_PATH=/readyz
+SERVER__UVICORN__TIMEOUT_KEEP_ALIVE=30
+SERVER__UVICORN__FORWARDED_ALLOW_IPS=*
+SERVER__MIDDLEWARES__GZIP__ENABLED=false
+SERVER__MIDDLEWARES__CORS__ALLOW_ORIGINS='["https://app.example.com"]'
+```
+
+Every model is a plain `BaseModel`, never a `BaseSettings`, so the only way into `server.port` is
+`SERVER__PORT`: a bare `PORT` or `HOST` in the pod cannot reach it. `HttpServerSettings().to_config()`
+equals `HttpConfig()` and `MiddlewareSettings().to_config()` equals `MiddlewareConfig()`, and a test
+asserts that each model names exactly the fields of its dataclass minus the members below, so a
+field added to a dataclass cannot leave the mapping silently incomplete. `MiddlewareConfig` is the
+entrypoint's own argument rather than part of `HttpConfig`, hence the second call.
+
+The members that are code, not environment, are arguments of `to_config()` rather than fields:
+
+| Argument | Of | Default | Why it is not read from settings |
+| --- | --- | --- | --- |
+| `version` | `HttpServerSettings.to_config` | `"0.0.0"` | The OpenAPI version is the application's, which `settings.app_version` carries once already |
+| `unit_scope` | `MiddlewareSettings.to_config` | `True` | Whether your DI integration owns the request scope is decided where it is wired |
+| `context_setters` | `MiddlewareSettings.to_config` | `None` | `ContextSetter` objects |
+| `custom` | `MiddlewareSettings.to_config` | `()` | Middleware classes and their kwargs |
+
+`fastapi_kwargs` and `uvicorn_kwargs` stay dict fields, JSON in the environment
+(`SERVER__FASTAPI_KWARGS='{"debug": true}'`); anything that is not JSON — a `lifespan`, say — goes
+onto the returned config afterwards, `config.fastapi_kwargs["lifespan"] = lifespan`.
+
+`port=0` is rejected unless `allow_ephemeral_port=True`, as on
+[`MetricsSettings`](../concepts/settings.md#validation-instead-of-silent-fallbacks): `0` only ever
+arrives here from configuration (`SERVER__PORT`, one keystroke from `8000`), and a pod on an
+ephemeral port is one no probe or load balancer reaches. `HttpConfig(port=0)` itself keeps working
+and reports what it got through `bound_port`. CORS `allow_credentials=True` with a `*` origin fails
+at load, with `server.middlewares.cors` in the error, rather than at construction.
+
+#### The uvicorn knobs
+
+`server.uvicorn` types the operational uvicorn arguments. Every field is `None` until set and only
+a set field is forwarded, so uvicorn's own defaults apply to the rest and the model pins none of
+them; `to_config()` puts exactly what was set into `HttpConfig.uvicorn_kwargs`, typed —
+`SERVER__UVICORN__TIMEOUT_KEEP_ALIVE=30` arrives as the integer `30`, where the same key under a
+`dict` field would arrive as the string `"30"`.
+
+| Field | uvicorn's default | Meaning |
+| --- | --- | --- |
+| `proxy_headers` | `True` | Trust `X-Forwarded-*` from `forwarded_allow_ips` |
+| `forwarded_allow_ips` | `127.0.0.1` | A list, a comma-separated string or `*` |
+| `root_path` | `""` | ASGI root path, for an app served under a prefix |
+| `server_header`, `date_header` | `True` | The `Server` and `Date` response headers |
+| `timeout_keep_alive` | `5` | Seconds an idle keep-alive connection is held |
+| `backlog` | `2048` | Listen backlog |
+| `limit_concurrency` | none | Concurrent connections or tasks before new requests get a 503 |
+| `limit_max_requests` | none | Requests served before the server exits — and the Host stops the process |
+| `h11_max_incomplete_event_size` | h11's | Largest request line plus headers, bytes |
+| `access_log` | `True` | uvicorn's own access log; the logging middleware writes one line per request already |
+| `log_level` | none | Level of uvicorn's own loggers, `critical` … `trace`, any case |
+| `ssl_keyfile`, `ssl_certfile`, `ssl_keyfile_password`, `ssl_ca_certs`, `ssl_cert_reqs`, `ssl_ciphers` | none | TLS termination in the process; uvicorn wraps the socket the runner bound |
+
+`uvicorn_kwargs` is the escape hatch for the rest of `uvicorn.Config`'s signature and wins on a
+collision, as it does on `HttpConfig` itself. A test asserts every typed field is a
+`uvicorn.Config` parameter and lands there under its own name.
+
+Not typed, on purpose, because the runner pre-binds the socket and drives one `uvicorn.Server`
+directly:
+
+| Parameter | Why |
+| --- | --- |
+| `workers` | Read only by `uvicorn.run()`'s multiprocess supervisor. `Server.serve()` is single-process, so a `workers` in `uvicorn_kwargs` is stored on the config and never consulted: one process per pod, always |
+| `host`, `port`, `timeout_graceful_shutdown` | `server.host`, `server.port`, `server.graceful_timeout` |
+| `log_config` | The Host owns logging; the runner passes `None` |
+| `loop` | `run_sync(loop=...)` owns the loop |
+| `reload*`, `uds`, `fd`, `env_file` | The development reloader, other ways to bind, another environment layer |
+
+Not covered at all: cookie policy (`secure`, `httponly`, `samesite`) is an application concern and
+stays in your settings; `MetricsInstrumentatorConfig` is callables and library kwargs, wired in
+code as under [Metrics](#metrics); `LitestarConfig` has no settings model.
+
 ## Per-request dependency scope
 
 `UnitScopeMiddleware` is installed automatically as the **outermost** middleware and opens one
