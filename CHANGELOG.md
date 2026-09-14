@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.10.2...servicewright-v0.11.0) (2026-09-14)
+
+
+### Features
+
+* GrpcConfig.from_settings builds the config from a grpc-server-kit settings object ([599021b](https://github.com/bedrock-python/servicewright/commit/599021b7bc17cd081ad5b4c1f5d1ad6097b44a4f)), closes [#58](https://github.com/bedrock-python/servicewright/issues/58)
+
 ## [0.10.2](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.10.1...servicewright-v0.10.2) (2026-09-07)
 
 
