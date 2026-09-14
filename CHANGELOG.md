@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.12.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.11.0...servicewright-v0.12.0) (2026-09-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* `MetricsSettings(port=0)` now raises `ValidationError`; pass `allow_ephemeral_port=True` (or `METRICS__ALLOW_EPHEMERAL_PORT=true`) to bind an ephemeral exposition port on purpose.
+
+### Features
+
+* MetricsSettings rejects port=0 unless allow_ephemeral_port=True ([7d51a43](https://github.com/bedrock-python/servicewright/commit/7d51a43cedf374934fe315bf7f118d19c9c97ac7))
+
 ## [0.11.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.10.2...servicewright-v0.11.0) (2026-09-14)
 
 
