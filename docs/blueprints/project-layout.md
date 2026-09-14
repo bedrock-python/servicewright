@@ -107,15 +107,10 @@ Four small files, each with one job.
 === "settings.py"
 
     ```python
-    from pydantic import BaseModel
     from pydantic_settings import SettingsConfigDict
 
+    from servicewright.adapters.fastapi import HttpServerSettings
     from servicewright.adapters.settings import BaseServiceSettings
-
-
-    class HttpSettings(BaseModel):
-        host: str = "0.0.0.0"
-        port: int = 8000
 
 
     class Settings(BaseServiceSettings):
@@ -123,7 +118,7 @@ Four small files, each with one job.
 
         database_dsn: str
 
-        http: HttpSettings = HttpSettings()
+        server: HttpServerSettings = HttpServerSettings()
     ```
 
 === "container.py"
@@ -176,18 +171,14 @@ Four small files, each with one job.
 === "entrypoints.py"
 
     ```python
-    from servicewright.adapters.fastapi import FastApiEntrypoint, HttpConfig
+    from servicewright.adapters.fastapi import FastApiEntrypoint
 
     from orders_service.api.http.routers import orders_router
 
 
     def build_http(settings: Settings) -> FastApiEntrypoint:
         return FastApiEntrypoint(
-            config=HttpConfig(
-                host=settings.http.host,
-                port=settings.http.port,
-                version=settings.app_version,
-            ),
+            config=settings.server.to_config(version=settings.app_version),
             routers=(orders_router,),
             metrics=True,
         )

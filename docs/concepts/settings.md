@@ -224,21 +224,39 @@ This is deliberate. `AppSpec` stays transport-neutral, which is what lets the sa
 API in one process and a worker in another. It also means two HTTP entrypoints in one process can
 have different ports without inventing a settings namespace for each.
 
-Of course, nothing stops you feeding your own settings into that config:
+Of course, nothing stops you feeding your own settings into that config — you do it explicitly,
+where you can see it — and for both transports the environment-facing side of the config ships
+next to it, so the feeding is one call rather than a transcription.
+
+For HTTP it is the FastAPI adapter's own
+[`HttpServerSettings`](../adapters/fastapi.md#from-settings): one pydantic model per config
+dataclass, same fields and defaults, `to_config()` on each. Nest it in your settings class under
+the name you choose:
 
 ```python
-FastApiEntrypoint(config=HttpConfig(host=settings.http.host, port=settings.http.port))
+from servicewright.adapters.fastapi import FastApiEntrypoint, HttpServerSettings
+
+
+class Settings(BaseServiceSettings):
+    server: HttpServerSettings = HttpServerSettings()
+
+
+FastApiEntrypoint(
+    config=settings.server.to_config(version=settings.app_version),
+    middlewares=settings.server.middlewares.to_config(),
+)
 ```
 
-You just do it explicitly, where you can see it.
-
-For gRPC the explicit version is one call. grpc-server-kit's `BaseGrpcServerSettings` carries the
-same field set as `GrpcConfig`, and
-[`GrpcConfig.from_settings`](../adapters/grpc.md#from-settings) reads all of it:
+For gRPC it is grpc-server-kit's `BaseGrpcServerSettings`, which carries the same field set as
+`GrpcConfig`, and [`GrpcConfig.from_settings`](../adapters/grpc.md#from-settings) reads all of it:
 
 ```python
 GrpcEntrypoint(config=GrpcConfig.from_settings(settings.grpc, health_service_names=("my.pkg.Orders",)))
 ```
+
+`BaseServiceSettings` itself carries neither section. It is transport-neutral, like `AppSpec`: a
+gRPC-only service never grows an HTTP section it does not read, and two HTTP entrypoints in one
+process are two sections under two names.
 
 ## Next
 

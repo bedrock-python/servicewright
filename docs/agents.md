@@ -311,7 +311,7 @@ installed and raise (or degrade) at construction instead.
 
 | Import | Public names |
 |---|---|
-| `servicewright.adapters.fastapi` | `FastApiEntrypoint`, `FastApiPlugin`, `HttpConfig`, `MiddlewareConfig`, `HealthConfig`, `CORSMiddlewareConfig`, `LoggingMiddlewareConfig`, `GZipMiddlewareConfig`, `CorrelationIdMiddlewareConfig`, `MetricsInstrumentatorConfig`, `UnitScopeDep`, `UnitScopeMiddleware`, `get_unit_scope`, `current_unit_scope`, `setup_default_exception_handlers`, `setup_metrics_instrumentator`, `LivenessResponse`, `ReadinessResponse`, `ProblemDetails`, `XUserId`, `IdempotencyKey`, `AuthorizationHeader`, `XFingerprintHeader`, `OtelBaggageSetter`, `StructlogSetter`, `get_default_context_setters`, `RoutesRegisterer`, `ConfigureApp` |
+| `servicewright.adapters.fastapi` | `FastApiEntrypoint`, `FastApiPlugin`, `HttpConfig`, `MiddlewareConfig`, `HealthConfig`, `CORSMiddlewareConfig`, `LoggingMiddlewareConfig`, `GZipMiddlewareConfig`, `CorrelationIdMiddlewareConfig`, `MetricsInstrumentatorConfig`, `UnitScopeDep`, `UnitScopeMiddleware`, `get_unit_scope`, `current_unit_scope`, `setup_default_exception_handlers`, `setup_metrics_instrumentator`, `LivenessResponse`, `ReadinessResponse`, `ProblemDetails`, `XUserId`, `IdempotencyKey`, `AuthorizationHeader`, `XFingerprintHeader`, `OtelBaggageSetter`, `StructlogSetter`, `get_default_context_setters`, `RoutesRegisterer`, `ConfigureApp`; the config as settings models `HttpServerSettings`, `HealthSettings`, `MiddlewareSettings`, `LoggingMiddlewareSettings`, `CorrelationIdMiddlewareSettings`, `GZipMiddlewareSettings`, `CORSMiddlewareSettings`, `UvicornSettings` |
 | `servicewright.adapters.litestar` | `LitestarEntrypoint`, `LitestarPlugin`, `LitestarConfig`, `HealthConfig`, `build_health_routes`, `UnitScopeMiddleware`, `get_unit_scope`, `current_unit_scope`, `RouteRegisterer`, `ConfigureApp` |
 | `servicewright.adapters.grpc` | `GrpcEntrypoint`, `GrpcPlugin`, `GrpcConfig`, `ServicerRegisterer`, `InterceptorFactory`, `ServiceErrorInterceptor`, `UnhandledErrorInterceptor`, `GRPC_STATUS_BY_KIND`, `ERROR_CODE_TRAILING_METADATA`, `GrpcHealthBridge`, `UnitScopeInterceptor`, `current_unit_scope`, `GrpcServerMetricsRecorder`, `IDEMPOTENCY_KEY_METADATA`, `get_idempotency_key`, `get_client_ip`, `get_user_agent`, `get_client_context` |
 | `servicewright.adapters.apscheduler4` (and `.apscheduler3`) | `SchedulerEntrypoint`, `SchedulerPlugin`, `ScheduledJob`, `ScheduledJobFunc`, `SchedulerJobMetricsRecorder`, `SchedulerError`, `DuplicateScheduleError` |
@@ -331,6 +331,15 @@ Entrypoint constructors, all keyword-only:
   `/system/health/livez` and `/system/health/readyz`, docs at `/system/docs`,
   `redirect_slashes=False`. `MiddlewareConfig` defaults have unit scope, context, sentry,
   processing time, logging, correlation id, gzip and CORS all on.
+  `HttpServerSettings` is `HttpConfig` as a settings model — a plain pydantic `BaseModel` the
+  adapter exports; nest it as `server: HttpServerSettings = HttpServerSettings()` in your
+  settings class and it is `SERVER__*` in the environment. Same fields and defaults, `health` and
+  `middlewares` sections, the operational uvicorn knobs typed under `uvicorn` (`None` means
+  uvicorn's default and only a set field is forwarded; there is no `workers`, since
+  `Server.serve()` is single-process and ignores it). `settings.server.to_config(version="0.0.0")`
+  is the `HttpConfig`, `settings.server.middlewares.to_config(unit_scope=True,
+  context_setters=None, custom=())` the `MiddlewareConfig`; the keywords are the members no
+  environment carries. `port=0` is rejected unless `allow_ephemeral_port=True`.
 * `LitestarEntrypoint(config=None, route_handlers=(), route_registerer=None,
   configure_app=None, kind="http", essential=True)`. `LitestarConfig` probes are
   `/system/livez` and `/system/readyz`; `unit_scope=True`.
@@ -416,7 +425,8 @@ Each `*Plugin` takes exactly the same arguments as its entrypoint and exposes `.
 12. **Settings are read structurally, never inherited.** The kernel reads `settings.logging`,
     `.metrics`, `.tracing`, `.error_tracking` and `get_app_version()` off whatever object you
     pass; a misspelled field silently becomes a default. `servicewright[settings]` ships the
-    contract as pydantic models so it cannot drift.
+    contract as pydantic models so it cannot drift, and the FastAPI adapter ships
+    `HttpServerSettings` for its own config the same way.
 13. **Warmers run in priority groups — lower `priority` first, equal priorities in
     parallel** — and the Host always calls the engine with `raise_on_failure=True`. A warmer
     that must not abort startup sets `raise_on_failure=False` on **itself**; a failing group
@@ -544,6 +554,24 @@ async def sweep(scope: UnitScopeProtocol) -> None:
 ```
 
 ```python
+# WRONG — a settings model of your own carrying HttpConfig's fields, copied across by hand
+class HttpSettings(BaseModel):
+    host: str = "0.0.0.0"
+    port: int = 8000
+    timeout_keep_alive: int = 5
+
+config = HttpConfig(host=settings.http.host, port=settings.http.port,
+                    uvicorn_kwargs={"timeout_keep_alive": settings.http.timeout_keep_alive})
+
+# RIGHT — the adapter ships the model; nest it and translate once
+class Settings(BaseServiceSettings):
+    server: HttpServerSettings = HttpServerSettings()
+
+config = settings.server.to_config(version=settings.app_version)
+middlewares = settings.server.middlewares.to_config()
+```
+
+```python
 # WRONG — passing a stop event and still expecting SIGTERM to be handled
 await service.run(settings, stop=asyncio.Event())   # no signal handlers are installed
 
@@ -599,7 +627,7 @@ Fetch a page when the task is the one named beside it.
 | [Observability](concepts/observability.md) | selecting backends, the four concerns, redaction, instruments |
 | [Plugins](concepts/plugins.md) | packaging wiring as `on_register` |
 | [Adapters overview](adapters/overview.md) | which adapter family solves the problem in front of you |
-| [FastAPI](adapters/fastapi.md) | the HTTP entrypoint, its middleware stack, probes, per-request scope |
+| [FastAPI](adapters/fastapi.md) | the HTTP entrypoint, its middleware stack, probes, per-request scope, `HttpServerSettings` |
 | [Litestar](adapters/litestar.md) | the lean HTTP entrypoint and how it differs from the FastAPI one |
 | [gRPC](adapters/grpc.md) | servicers, interceptors, the health bridge, error mapping, reflection, `GrpcConfig.from_settings` |
 | [Scheduler](adapters/scheduler.md) | cron and interval jobs, triggers, the 3.x/4.x split |

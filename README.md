@@ -119,7 +119,7 @@ import-linter contract enforces the direction in CI: deleting `adapters/` leaves
 | `core.warmup` | Priority-grouped, fail-fast warmup before readiness flips | — |
 | `core.observability` | Sink protocols, NullObjects, backend registry, redaction | — |
 | `adapters.builtin` | `DaemonEntrypoint`, `OneShotEntrypoint` — zero-dependency | — |
-| `adapters.fastapi` | FastAPI entrypoint, middleware stack, problem-details handlers | `fastapi` |
+| `adapters.fastapi` | FastAPI entrypoint, middleware stack, problem-details handlers, its config as settings models | `fastapi` |
 | `adapters.litestar` | Litestar entrypoint | `litestar` |
 | `adapters.grpc` | gRPC entrypoint over grpc-server-kit, error mapping, health bridge | `grpc` |
 | `adapters.apscheduler4` / `apscheduler3` | Scheduler entrypoints with identical public surfaces | `apscheduler4` / `apscheduler3` |
@@ -133,7 +133,7 @@ import-linter contract enforces the direction in CI: deleting `adapters/` leaves
 
 | Extra | Pulls in | Enables |
 | --- | --- | --- |
-| `fastapi` | fastapi, uvicorn, deadline-budget, prometheus-fastapi-instrumentator | `FastApiEntrypoint` + its middleware stack |
+| `fastapi` | fastapi, uvicorn, deadline-budget, prometheus-fastapi-instrumentator | `FastApiEntrypoint` + its middleware stack, `HttpServerSettings` |
 | `litestar` | litestar, uvicorn | `LitestarEntrypoint` |
 | `grpc` | grpc-server-kit[reflection,channelz,health] | `GrpcEntrypoint`, error mapping, health bridge |
 | `apscheduler4` / `apscheduler3` | apscheduler 4.x / 3.x | `SchedulerEntrypoint` (one major per environment) |

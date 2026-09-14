@@ -22,7 +22,7 @@ try:
     from fastapi.exceptions import RequestValidationError
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.middleware.gzip import GZipMiddleware
-    from pydantic import BaseModel, ConfigDict, Field
+    from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
     from starlette.datastructures import Headers, MutableHeaders
     from starlette.exceptions import HTTPException as StarletteHTTPException
     from starlette.responses import JSONResponse, Response
@@ -46,6 +46,8 @@ __all__ = [
     "RequestValidationError",
     "Response",
     "StarletteHTTPException",
+    "field_validator",
+    "model_validator",
     "status",
     "uvicorn",
 ]
