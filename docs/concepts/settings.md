@@ -43,6 +43,7 @@ your own that uses them behaves exactly like the shipped one.
 | `enabled` | `bool` | `False` | Start a standalone exposition server |
 | `host` | `str` | `"0.0.0.0"` | Bind host for that server |
 | `port` | `int` | `9090` | Bind port for that server |
+| `allow_ephemeral_port` | `bool` | `False` | Accept `port=0`; validated by the shipped model, not read by the backend |
 | `prefix` | `str \| None` | `None` | Metric name prefix, for backends that use one |
 
 `host` and `port` are read only when `enabled` is true and have no backend fallback; their
@@ -172,6 +173,15 @@ extra itself pulls in nothing but pydantic-settings.
 The models validate what the backends assume: the log level must be one of `LogLevelStr`
 (case-insensitively, so `LOGGING__LEVEL=debug` is fine while `warn` is a load-time error rather
 than a silent `INFO`), the sample ratios are bounded to `[0, 1]`, the metrics port to a port.
+
+`MetricsSettings` also rejects `port=0` unless `allow_ephemeral_port=True`. `0` binds an
+ephemeral port, which is what a test wants and, in a pod, what a scraper pointed at a fixed port
+never finds; the sink has no bound-port readback, so nothing in the process knows either, and `0`
+only ever arrives from configuration (`METRICS__PORT`, one keystroke from `9090`). Say it in code
+for a service that means it, or set `METRICS__ALLOW_EPHEMERAL_PORT=true` next to `METRICS__PORT=0`
+when the port comes from the environment: a section is built afresh from its variables, so a
+default instance on the settings class is replaced, not merged, once one `METRICS__*` variable is
+set.
 
 ### Disabling and narrowing
 
