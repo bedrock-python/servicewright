@@ -55,6 +55,22 @@ order_not_found` in the trailing metadata. Nothing to catch, nothing to map.
 
 ## 2. Registration
 
+`settings.grpc` is grpc-server-kit's `BaseGrpcServerSettings`, one more section on the
+[HTTP blueprint's `Settings`](http-api.md#1-settings) — host, port, TLS, keepalive, message sizes,
+grace period, all `GRPC__*` in the environment:
+
+```python title="settings.py"
+from grpc_server_kit.settings import BaseGrpcServerSettings
+
+
+class Settings(BaseServiceSettings):
+    ...
+    grpc: BaseGrpcServerSettings = BaseGrpcServerSettings()
+```
+
+`GrpcConfig.from_settings` reads every one of those fields; its keywords cover what no settings
+object carries — here, which servicers to report health for and to advertise:
+
 ```python title="runtime/entrypoints.py"
 from servicewright import ServiceContext
 from servicewright.adapters.grpc import GrpcConfig, GrpcEntrypoint
@@ -70,26 +86,26 @@ def register_servicers(server, ctx: ServiceContext) -> None:
 
 def build_grpc(settings: Settings) -> GrpcEntrypoint:
     return GrpcEntrypoint(
-        config=GrpcConfig(
-            host=settings.grpc.host,
-            port=settings.grpc.port,
-            grace_period=30.0,
+        config=GrpcConfig.from_settings(
+            settings.grpc,
             health_service_names=(ORDERS_SERVICE,),
             reflection_service_names=[ORDERS_SERVICE],
-            enable_reflection=settings.environment != "production",
-            enable_channelz=False,
-            max_receive_message_length=8 * 1024 * 1024,
         ),
         servicers=register_servicers,
         interceptors=[AuthInterceptor(), LoggingInterceptor()],
-        enable_metrics=True,
+        enable_metrics=settings.grpc.metrics_enabled,
     )
 ```
 
+The values are the settings model's, defaults included: its `grace_period` is 5 s, so set
+`GRPC__GRACE_PERIOD=30` to spend the Host's whole drain allowance, as the
+[deployment below](#5-deploy) assumes.
+
 !!! danger "Reflection is unauthenticated and shares the production port"
 
-    Gate it on the environment, as above. The same goes for channelz, which additionally leaks
-    peer addresses and per-socket counters. See
+    Gate it on the environment: `GRPC__ENABLE_REFLECTION=true` in dev and staging, unset in
+    production. The same goes for channelz, which additionally leaks peer addresses and
+    per-socket counters. See
     [the gRPC adapter](../adapters/grpc.md#health-reflection-and-channelz).
 
 ## 3. Interceptor ordering

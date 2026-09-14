@@ -5,13 +5,19 @@ own configuration. ``GrpcConfig`` deliberately exposes the full
 ``grpc_server_kit.protocols.GrpcServerSettingsProtocol`` surface (host, port,
 keepalive, flow-control, SSL, ...) so it can be handed straight to
 ``create_async_grpc_server`` / ``bind_server_port`` without any service settings.
+The other direction — building it from the kit's own settings model — is
+:meth:`GrpcConfig.from_settings`.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from ...core.constants import DEFAULT_DRAIN_GRACE_SECONDS
+
+if TYPE_CHECKING:
+    from grpc_server_kit.protocols import GrpcServerSettingsProtocol
 
 # Default port / health service name (mirrors the gRPC prototype constants).
 DEFAULT_GRPC_HOST = "0.0.0.0"
@@ -139,6 +145,66 @@ class GrpcConfig:
             raise ValueError(f"grace_period must be non-negative, got {self.grace_period}")
         if self.health_refresh_interval < 0:
             raise ValueError(f"health_refresh_interval must be non-negative, got {self.health_refresh_interval}")
+
+    @classmethod
+    def from_settings(
+        cls,
+        settings: GrpcServerSettingsProtocol,
+        *,
+        health_service_names: tuple[str, ...] = (),
+        health_refresh_interval: float = DEFAULT_HEALTH_REFRESH_INTERVAL_SECONDS,
+        reflection_service_names: list[str] | None = None,
+    ) -> GrpcConfig:
+        """Build the config from a grpc-server-kit settings object.
+
+        ``settings`` is anything satisfying the kit's
+        ``GrpcServerSettingsProtocol`` — its ``BaseGrpcServerSettings`` pydantic
+        model, its stdlib ``GrpcServerConfig``, a model of your own — and every
+        field the protocol declares is read from it, defaults included: the kit
+        binds ``[::]`` and drains for 5 s where this class binds ``0.0.0.0`` and
+        drains for 30 s, and the kit's values win. The mapping lives here so a
+        field added to this class cannot go missing from a service's copy of it.
+
+        The keyword arguments are the three fields no settings object carries.
+        ``health_service_names`` and ``reflection_service_names`` name your own
+        servicers, which is code, not environment. ``health_refresh_interval``
+        is deliberately not derived from the kit's ``health.cache_ttl``: the two
+        agree while positive and disagree at zero, where ``cache_ttl=0`` means
+        "re-check on every probe" and ``health_refresh_interval=0`` means "never
+        re-evaluate". The kit's ``metrics_enabled`` has no field here either;
+        that switch is ``GrpcEntrypoint(enable_metrics=...)``.
+        """
+        return cls(
+            host=settings.host,
+            port=settings.port,
+            grace_period=settings.grace_period,
+            enable_reflection=settings.enable_reflection,
+            enable_channelz=settings.enable_channelz,
+            health_service_names=health_service_names,
+            health_refresh_interval=health_refresh_interval,
+            reflection_service_names=reflection_service_names,
+            max_concurrent_rpcs=settings.max_concurrent_rpcs,
+            keepalive_time_ms=settings.keepalive_time_ms,
+            keepalive_timeout_ms=settings.keepalive_timeout_ms,
+            keepalive_permit_without_calls=settings.keepalive_permit_without_calls,
+            http2_min_recv_ping_interval_without_data_ms=settings.http2_min_recv_ping_interval_without_data_ms,
+            http2_max_pings_without_data=settings.http2_max_pings_without_data,
+            max_send_message_length=settings.max_send_message_length,
+            max_receive_message_length=settings.max_receive_message_length,
+            max_metadata_size=settings.max_metadata_size,
+            initial_stream_window_size=settings.initial_stream_window_size,
+            initial_connection_window_size=settings.initial_connection_window_size,
+            max_connection_idle_ms=settings.max_connection_idle_ms,
+            max_connection_age_ms=settings.max_connection_age_ms,
+            max_connection_age_grace_ms=settings.max_connection_age_grace_ms,
+            compression_algorithm=settings.compression_algorithm,
+            ssl_enabled=settings.ssl_enabled,
+            ssl_cert_file=settings.ssl_cert_file,
+            ssl_key_file=settings.ssl_key_file,
+            ssl_ca_file=settings.ssl_ca_file,
+            ssl_client_auth=settings.ssl_client_auth,
+            ssl_max_cert_size=settings.ssl_max_cert_size,
+        )
 
     @property
     def address(self) -> str:

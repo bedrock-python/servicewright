@@ -234,6 +234,47 @@ control windows, connection age limits, compression — and TLS (`ssl_enabled`, 
 `GrpcConfig` satisfies grpc-server-kit's settings protocol, so it can be handed straight to the
 kit's primitives.
 
+### From settings
+
+grpc-server-kit ships the environment-facing side of the same field set,
+`grpc_server_kit.settings.BaseGrpcServerSettings` — a pydantic model, so `grpc-server-kit[settings]`,
+which `servicewright[settings]` covers already. `GrpcConfig.from_settings` reads every field off
+it, so the mapping lives here rather than in each service:
+
+```python
+from grpc_server_kit.settings import BaseGrpcServerSettings
+
+from servicewright.adapters.grpc import GrpcConfig
+from servicewright.adapters.settings import BaseServiceSettings
+
+
+class Settings(BaseServiceSettings):
+    grpc: BaseGrpcServerSettings = BaseGrpcServerSettings()
+
+
+settings = Settings()  # GRPC__PORT=50051 GRPC__KEEPALIVE_TIME_MS=30000 GRPC__SSL_ENABLED=true ...
+config = GrpcConfig.from_settings(settings.grpc, health_service_names=("my.pkg.Orders",))
+```
+
+`settings` is anything satisfying the kit's `GrpcServerSettingsProtocol` — the pydantic model, the
+stdlib `grpc_server_kit.GrpcServerConfig`, a model of your own — and every value comes from it,
+defaults included: the kit binds `[::]` with a 5 s `grace_period`, 8 KiB of metadata and
+`keepalive_permit_without_calls=False` where `GrpcConfig()` has `0.0.0.0`, 30 s, 16 KiB and `True`.
+A test in servicewright asserts that every `GrpcConfig` field is either read from the settings
+object or in the table below, so a knob added to `GrpcConfig` cannot leave the mapping silently
+incomplete.
+
+Three fields have no source on a settings object and are keyword arguments instead:
+
+| Keyword | Default | Why it is not read from settings |
+| --- | --- | --- |
+| `health_service_names` | `()` | Your own servicers' names: code, not environment |
+| `reflection_service_names` | `None` | Same |
+| `health_refresh_interval` | `5.0` | The kit's `health.cache_ttl` looks alike but means the opposite at `0`: no caching there, no polling here |
+
+The kit's `metrics_enabled` has no `GrpcConfig` field either; that switch is
+`GrpcEntrypoint(enable_metrics=settings.grpc.metrics_enabled)`.
+
 ## Drain semantics
 
 The effective drain budget is `min(host_grace, config.grace_period)`:

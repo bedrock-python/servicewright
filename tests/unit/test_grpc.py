@@ -10,13 +10,16 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
+from dataclasses import fields
 from typing import Any
 from unittest.mock import MagicMock
 
 import grpc
 import grpc.aio
 import pytest
+from grpc_server_kit import GrpcServerConfig
 from grpc_server_kit.aio.interceptors import AsyncMetricsInterceptor, RpcCall
+from grpc_server_kit.settings import BaseGrpcServerSettings, BaseHealthSettings
 
 from servicewright import AppSpec, Entrypoint, Plugin, Service
 from servicewright.adapters.grpc import (
@@ -169,6 +172,95 @@ def test__grpc_config__default__uses_the_documented_values() -> None:
 def test__grpc_config__host_and_port_overridden__reports_the_address() -> None:
     config = GrpcConfig(host="127.0.0.1", port=0)
     assert config.address == "127.0.0.1:0"
+
+
+# --------------------------------------------------------------------------- #
+# GrpcConfig.from_settings
+# --------------------------------------------------------------------------- #
+# Every kit field set away from the GrpcConfig default, so a field the mapping
+# skips is the one that comes out unchanged.
+_KIT_SETTINGS = BaseGrpcServerSettings(
+    host="10.0.0.1",
+    port=50052,
+    ssl_enabled=True,
+    ssl_cert_file="server.crt",
+    ssl_key_file="server.key",
+    ssl_ca_file="ca.crt",
+    ssl_client_auth=True,
+    ssl_max_cert_size=4096,
+    keepalive_time_ms=1_000,
+    keepalive_timeout_ms=2_000,
+    keepalive_permit_without_calls=False,  # GrpcConfig() has True
+    http2_min_recv_ping_interval_without_data_ms=3_000,
+    http2_max_pings_without_data=4,
+    max_concurrent_rpcs=5,
+    max_connection_idle_ms=6_000,
+    max_connection_age_ms=7_000,
+    max_connection_age_grace_ms=8_000,
+    max_send_message_length=9_000,
+    max_receive_message_length=10_000,
+    max_metadata_size=11_000,
+    compression_algorithm="gzip",
+    initial_stream_window_size=12_000,
+    initial_connection_window_size=13_000,
+    enable_reflection=True,
+    enable_channelz=True,
+    grace_period=14.0,
+    metrics_enabled=True,
+    health=BaseHealthSettings(cache_ttl=0.5),
+)
+
+# The GrpcConfig fields from_settings reads off nothing, each with its reason.
+_NOT_FROM_SETTINGS = {
+    "health_service_names": "your own servicers: code, not environment",
+    "reflection_service_names": "your own servicers: code, not environment",
+    "health_refresh_interval": "the kit's health.cache_ttl means the opposite at zero",
+}
+
+
+def test__grpc_config_from_settings__kit_model__carries_every_value_across() -> None:
+    config = GrpcConfig.from_settings(_KIT_SETTINGS)
+    # Everything the kit model holds, minus the two knobs GrpcConfig has no field
+    # for: health (see _NOT_FROM_SETTINGS) and metrics_enabled (the entrypoint's).
+    expected = _KIT_SETTINGS.model_dump(exclude={"health", "metrics_enabled"})
+    assert {name: getattr(config, name) for name in expected} == expected
+
+
+def test__grpc_config_from_settings__every_field__is_read_or_listed_with_its_reason() -> None:
+    config = GrpcConfig.from_settings(_KIT_SETTINGS)
+    defaults = GrpcConfig()
+    for field in fields(GrpcConfig):
+        value, default = getattr(config, field.name), getattr(defaults, field.name)
+        if field.name in _NOT_FROM_SETTINGS:
+            assert value == default, field.name
+        else:
+            assert value != default, f"{field.name} kept its default: from_settings does not read it"
+    assert _NOT_FROM_SETTINGS.keys() <= {field.name for field in fields(GrpcConfig)}
+
+
+def test__grpc_config_from_settings__keywords__fill_the_fields_no_settings_carry() -> None:
+    config = GrpcConfig.from_settings(
+        _KIT_SETTINGS,
+        health_service_names=("my.pkg.Orders",),
+        health_refresh_interval=0.5,
+        reflection_service_names=["my.pkg.Orders"],
+    )
+    assert config.health_service_names == ("my.pkg.Orders",)
+    assert config.health_refresh_interval == 0.5
+    assert config.reflection_service_names == ["my.pkg.Orders"]
+
+
+def test__grpc_config_from_settings__kit_defaults__win_over_the_config_defaults() -> None:
+    config = GrpcConfig.from_settings(BaseGrpcServerSettings())
+    assert config.host == "[::]"
+    assert config.grace_period == 5.0
+    assert config.keepalive_permit_without_calls is False
+    assert config.max_metadata_size == 8 * 1024
+
+
+def test__grpc_config_from_settings__kit_dataclass__is_accepted_too() -> None:
+    config = GrpcConfig.from_settings(GrpcServerConfig(port=0, grace_period=1.0))
+    assert (config.port, config.grace_period) == (0, 1.0)
 
 
 # --------------------------------------------------------------------------- #

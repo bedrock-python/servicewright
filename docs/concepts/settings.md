@@ -222,6 +222,14 @@ FastApiEntrypoint(config=HttpConfig(host=settings.http.host, port=settings.http.
 
 You just do it explicitly, where you can see it.
 
+For gRPC the explicit version is one call. grpc-server-kit's `BaseGrpcServerSettings` carries the
+same field set as `GrpcConfig`, and
+[`GrpcConfig.from_settings`](../adapters/grpc.md#from-settings) reads all of it:
+
+```python
+GrpcEntrypoint(config=GrpcConfig.from_settings(settings.grpc, health_service_names=("my.pkg.Orders",)))
+```
+
 ## Next
 
 - [Observability](observability.md) — how `ObsConfig` maps backends onto these sections.
