@@ -457,7 +457,9 @@ Each `*Plugin` takes exactly the same arguments as its entrypoint and exposes `.
 19. **The FastAPI `metrics=` flag and `settings.metrics.enabled` are different things.**
     `FastApiEntrypoint(metrics=True)` adds the in-app `/system/metrics` route;
     `settings.metrics.enabled` starts the sink's own standalone exposition server on its own
-    port. Neither implies the other.
+    port. Neither implies the other. `MetricsSettings` rejects `port=0` unless
+    `allow_ephemeral_port=True`: the sink has no bound-port readback, so an ephemeral
+    exposition port is one nothing scrapes, and `METRICS__PORT=0` in a pod is a silent outage.
 20. **gRPC reflection and channelz are off by default and unauthenticated when on**, on the
     same port as production traffic. The effective gRPC drain is
     `min(host drain_grace_seconds, config.grace_period)`.

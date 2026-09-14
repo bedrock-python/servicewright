@@ -35,7 +35,7 @@ from __future__ import annotations
 from ...core.observability import LogLevelStr
 
 try:
-    from pydantic import BaseModel, Field, field_validator
+    from pydantic import BaseModel, Field, field_validator, model_validator
     from pydantic_settings import BaseSettings, SettingsConfigDict
 except ImportError as exc:  # pragma: no cover - exercised only without the extra
     raise ImportError("Settings models require servicewright[settings]; install it.") from exc
@@ -65,13 +65,28 @@ class MetricsSettings(BaseModel):
     Satisfies :class:`~servicewright.core.observability.MetricsSettingsProtocol`.
     A present section activates the metrics sink; ``enabled`` only decides whether
     the sink also serves ``/metrics`` on its own port (the FastAPI entrypoint
-    serves ``/system/metrics`` regardless).
+    serves ``/system/metrics`` regardless). ``port=0`` is rejected unless
+    ``allow_ephemeral_port`` says so: the sink has no bound-port readback, so an
+    ephemeral exposition port is one nothing scrapes.
     """
 
     enabled: bool = Field(default=False, description="Start a standalone exposition server")
     host: str = Field(default="0.0.0.0", description="Bind host of that server")
     port: int = Field(default=9090, ge=0, le=65535, description="Bind port of that server")
+    allow_ephemeral_port: bool = Field(
+        default=False,
+        description="Accept port=0 (ephemeral); off by default, a scraper targeting a fixed port cannot reach one",
+    )
     prefix: str | None = Field(default=None, description="Metric name prefix, for backends that apply one globally")
+
+    @model_validator(mode="after")
+    def _validate_port(self) -> MetricsSettings:
+        if self.port == 0 and not self.allow_ephemeral_port:
+            raise ValueError(
+                "metrics port=0 binds an ephemeral port and a scraper targeting a fixed port will not reach it; "
+                "set allow_ephemeral_port=True if that is intended"
+            )
+        return self
 
 
 class TracingSettings(BaseModel):

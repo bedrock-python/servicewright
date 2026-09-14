@@ -225,6 +225,36 @@ def test__section_models__value_outside_what_the_backend_accepts__is_rejected_at
         model(**{field: value})
 
 
+def test__metrics_settings__port_zero__rejected_naming_the_flag() -> None:
+    # 0 only ever arrives from configuration, and a pod on an ephemeral port is one nothing scrapes.
+    with pytest.raises(ValidationError, match=r"ephemeral port.*allow_ephemeral_port=True"):
+        MetricsSettings(port=0)
+
+
+def test__metrics_settings__port_zero_with_allow_ephemeral_port__accepted() -> None:
+    assert MetricsSettings(port=0, allow_ephemeral_port=True).port == 0
+
+
+@pytest.mark.parametrize("allow_ephemeral_port", [False, True])
+def test__metrics_settings__fixed_port__unaffected_by_allow_ephemeral_port(allow_ephemeral_port: bool) -> None:
+    assert MetricsSettings(port=9090, allow_ephemeral_port=allow_ephemeral_port).port == 9090
+
+
+def test__base_service_settings__metrics_port_zero_from_environment__behaves_as_kwargs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("METRICS__PORT", "0")
+
+    with pytest.raises(ValidationError, match=r"allow_ephemeral_port=True"):
+        BaseServiceSettings()
+
+    monkeypatch.setenv("METRICS__ALLOW_EPHEMERAL_PORT", "true")
+    settings = BaseServiceSettings()
+
+    assert settings.metrics is not None
+    assert settings.metrics.port == 0
+
+
 # --------------------------------------------------------------------------- #
 # As overridable as a hand-written class
 # --------------------------------------------------------------------------- #
