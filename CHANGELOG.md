@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.12.0...servicewright-v0.13.0) (2026-09-14)
+
+
+### Features
+
+* HttpServerSettings builds the FastAPI entrypoint's config from environment settings ([9c3e23e](https://github.com/bedrock-python/servicewright/commit/9c3e23ef5771e28d7427eba49a2f0027d9730c0b)), closes [#61](https://github.com/bedrock-python/servicewright/issues/61)
+
 ## [0.12.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.11.0...servicewright-v0.12.0) (2026-09-14)
 
 
