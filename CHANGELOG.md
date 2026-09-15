@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.1](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.13.0...servicewright-v0.13.1) (2026-09-15)
+
+
+### Bug Fixes
+
+* servicewright[grpc] accepts grpc-server-kit 0.2 ([5cb4e8d](https://github.com/bedrock-python/servicewright/commit/5cb4e8dd65170993decdef765c2fb8d8f7642114)), closes [#66](https://github.com/bedrock-python/servicewright/issues/66)
+
 ## [0.13.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.12.0...servicewright-v0.13.0) (2026-09-14)
 
 
