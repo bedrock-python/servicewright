@@ -220,9 +220,11 @@ _NOT_FROM_SETTINGS = {
 
 def test__grpc_config_from_settings__kit_model__carries_every_value_across() -> None:
     config = GrpcConfig.from_settings(_KIT_SETTINGS)
-    # Everything the kit model holds, minus the two knobs GrpcConfig has no field
-    # for: health (see _NOT_FROM_SETTINGS) and metrics_enabled (the entrypoint's).
-    expected = _KIT_SETTINGS.model_dump(exclude={"health", "metrics_enabled"})
+    # Everything the kit model holds, minus the knobs GrpcConfig has no field for:
+    # health (see _NOT_FROM_SETTINGS), metrics_enabled (the entrypoint's) and
+    # allow_ephemeral_port (kit >= 0.2: a validator switch on the env-facing model;
+    # GrpcConfig is the runtime shape and takes port=0 as GrpcServerConfig does).
+    expected = _KIT_SETTINGS.model_dump(exclude={"health", "metrics_enabled", "allow_ephemeral_port"})
     assert {name: getattr(config, name) for name in expected} == expected
 
 
