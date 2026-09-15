@@ -658,14 +658,14 @@ wheels = [
 
 [[package]]
 name = "grpc-server-kit"
-version = "0.1.0"
+version = "0.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "grpcio" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/16/38/ffa27b8fb9e676b8e0408bcbdfb07d89738a9c068991c6c9d8afb2d1ce0b/grpc_server_kit-0.1.0.tar.gz", hash = "sha256:b54b96a5350a473bedfbc7ab1e6a7591399f55779fd4ca2451f9074a6046fc96", size = 59623, upload-time = "2026-08-11T07:58:59.956Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7f/88/44d5dc8cfd75878162ddf0500194e46ad28d70d67da78a11527267d35806/grpc_server_kit-0.2.0.tar.gz", hash = "sha256:c723dfcc7b0b09635ffbfd0dd2e585f12899a251e17ed7b3131fc6d736038657", size = 61332, upload-time = "2026-09-14T23:20:44.94Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/71/72/902527bde2131fef35f386f0a35aa7f59f388f909e641c61676f0f4eb116/grpc_server_kit-0.1.0-py3-none-any.whl", hash = "sha256:39d3151d2a5ce454f7a5b94a7dc05e73a1234e1aefa98f9f88900585eadc3a8b", size = 85194, upload-time = "2026-08-11T07:58:58.634Z" },
+    { url = "https://files.pythonhosted.org/packages/2e/fd/8092d68ce259da08fca34553295ce9d921ba51658876f8f2d01380d6cd48/grpc_server_kit-0.2.0-py3-none-any.whl", hash = "sha256:b6e862547670a5ca491ceb0441339b719d802621b262b97cda261112275eb9a7", size = 85988, upload-time = "2026-09-14T23:20:43.738Z" },
 ]
 
 [package.optional-dependencies]
@@ -2059,7 +2059,7 @@ wheels = [
 
 [[package]]
 name = "servicewright"
-version = "0.10.2"
+version = "0.13.0"
 source = { editable = "." }
 
 [package.optional-dependencies]
@@ -2207,7 +2207,7 @@ requires-dist = [
     { name = "deadline-budget", marker = "extra == 'fastapi'", specifier = ">=0.1.0,<1.0.0" },
     { name = "dishka", marker = "extra == 'dishka'", specifier = ">=1.4.0" },
     { name = "fastapi", marker = "extra == 'fastapi'", specifier = ">=0.115.0,<1.0.0" },
-    { name = "grpc-server-kit", extras = ["reflection", "channelz", "health"], marker = "extra == 'grpc'", specifier = ">=0.1.0,<0.2" },
+    { name = "grpc-server-kit", extras = ["reflection", "channelz", "health"], marker = "extra == 'grpc'", specifier = ">=0.1.0,<0.3" },
     { name = "litestar", marker = "extra == 'litestar'", specifier = ">=2.12.0" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", marker = "extra == 'observability'", specifier = ">=1.39.1" },
     { name = "opentelemetry-instrumentation-fastapi", marker = "extra == 'fastapi-tracing'", specifier = ">=0.60b1" },
@@ -2232,7 +2232,7 @@ dev = [
     { name = "aiokafka", specifier = ">=0.10.0" },
     { name = "dishka", specifier = ">=1.4.0" },
     { name = "freezegun", specifier = ">=1.5.5" },
-    { name = "grpc-server-kit", extras = ["reflection", "channelz", "health"], specifier = ">=0.1.0,<0.2" },
+    { name = "grpc-server-kit", extras = ["reflection", "channelz", "health"], specifier = ">=0.1.0,<0.3" },
     { name = "httpx", specifier = ">=0.27.0,<1.0.0" },
     { name = "import-linter", specifier = ">=2.3" },
     { name = "litestar", specifier = ">=2.12.0" },
@@ -2263,7 +2263,7 @@ test = [
     { name = "aiokafka", specifier = ">=0.10.0" },
     { name = "dishka", specifier = ">=1.4.0" },
     { name = "freezegun", specifier = ">=1.5.5" },
-    { name = "grpc-server-kit", extras = ["reflection", "channelz", "health"], specifier = ">=0.1.0,<0.2" },
+    { name = "grpc-server-kit", extras = ["reflection", "channelz", "health"], specifier = ">=0.1.0,<0.3" },
     { name = "httpx", specifier = ">=0.27.0,<1.0.0" },
     { name = "litestar", specifier = ">=2.12.0" },
     { name = "opentelemetry-exporter-otlp", specifier = ">=1.39.1" },

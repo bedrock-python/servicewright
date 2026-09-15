@@ -215,7 +215,7 @@ token**, always.
 
 | Adapter | Folder | Public import | Extra | Upstream pin |
 |---|---|---|---|---|
-| gRPC | `adapters/grpc/` | `from servicewright.adapters.grpc import GrpcEntrypoint` | `[grpc]` | `grpc-server-kit>=0.1,<0.2` |
+| gRPC | `adapters/grpc/` | `from servicewright.adapters.grpc import GrpcEntrypoint` | `[grpc]` | `grpc-server-kit>=0.1,<0.3` |
 | FastAPI | `adapters/fastapi/` | `…adapters.fastapi import FastApiEntrypoint` | `[fastapi]` | `fastapi>=0.115,<1` |
 | Litestar | `adapters/litestar/` | `…adapters.litestar import LitestarEntrypoint` | `[litestar]` | `litestar>=2.12` |
 | APScheduler 4.x | `adapters/apscheduler4/` | `…adapters.apscheduler4 import SchedulerEntrypoint, ScheduledJob` | `[apscheduler4]` | `apscheduler>=4.0.0a5,<5` |
@@ -432,7 +432,7 @@ a health check for the same tech.
 # entrypoint frameworks (per-major where the upstream breaks majors — §6)
 fastapi      = ["fastapi>=0.115,<1", "uvicorn[standard]", "deadline-budget", "prometheus-fastapi-instrumentator"]
 litestar     = ["litestar>=2.12", "uvicorn[standard]"]
-grpc         = ["grpc-server-kit[reflection,channelz,health]>=0.1.0,<0.2"]   # external, on PyPI (§11)
+grpc         = ["grpc-server-kit[reflection,channelz,health]>=0.1.0,<0.3"]   # external, on PyPI (§11)
 apscheduler4 = ["apscheduler>=4.0.0a5,<5"]
 apscheduler3 = ["apscheduler>=3.10,<4"]
 kafka        = ["aiokafka>=0.10.0"]            # kafka warmer (the consumer entrypoint is not shipped yet)
@@ -463,7 +463,7 @@ forked `Error` envelope splits the wire contract). Per-lib disposition:
 
 | Lib | Disposition |
 |---|---|
-| `grpc-server-kit` | **External** PyPI (published 2026-08-10, `[grpc]` pins `>=0.1.0,<0.2`). Final direction (supersedes the 2026-07-12 "authority reversed" plan): the kit is fully standalone — it owns its SDK-free seam protocols and streaming-aware interceptor base, depends on grpcio only, and never imports servicewright; servicewright's gRPC adapter composes over it |
+| `grpc-server-kit` | **External** PyPI (published 2026-08-10, `[grpc]` pins `>=0.1.0,<0.3`). Final direction (supersedes the 2026-07-12 "authority reversed" plan): the kit is fully standalone — it owns its SDK-free seam protocols and streaming-aware interceptor base, depends on grpcio only, and never imports servicewright; servicewright's gRPC adapter composes over it |
 | `grpc-interceptor-kit` | **Dropped** (2026-08-11): the kit's own `AsyncServerInterceptor`/`AsyncMetricsInterceptor` replaced every use; no servicewright code imports it |
 | `deadline-budget-kit`, `omni-box` | **External** PyPI (already published) |
 | `asgi-middlewares-kit` | **Vendored** (2026-07-13) into `adapters/fastapi/middlewares/` (servicewright was its only consumer; dropped the dead-`CSRFMiddleware` `itsdangerous` dep) |
