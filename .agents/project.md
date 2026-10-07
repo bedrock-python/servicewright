@@ -1,45 +1,46 @@
 # Project profile
 
-<!--
-A skeleton from the engineering-assets hub: fill it in for this repository.
-Once you edit it, the file is this repository's own and the hub never changes
-it again. Agents read it before every task (AGENTS.md), so keep it short and
-factual, and delete the hints you have answered. Until it is filled in, agents
-find these facts in the repository instead, and say where they found them.
--->
-
 ## About
 
-- What this repository is, in one sentence:
-- Who uses it:
-- Language, version and main frameworks:
-- Where the documentation lives:
+- What this repository is: `servicewright`, a batteries-optional microservice runtime for async Python, published on PyPI. A service is described once as an `AppSpec`, and one `Host` runs it through any number of entrypoints: HTTP, gRPC, scheduler, daemon, one-shot.
+- Who uses it: authors of async Python services, such as HTTP and gRPC APIs, scheduled jobs, background workers and batch jobs, including several of them in one process.
+- Language, version and main frameworks: Python 3.12 and newer (CI tests 3.12 and 3.13), with no runtime dependencies. The kernel is `servicewright/core/`. Every framework binding is an extra-gated adapter in `servicewright/adapters/`. The extras are `fastapi`, `litestar`, `grpc`, `apscheduler4`, `apscheduler3`, `dishka`, `settings`, `observability`, `fastapi-tracing`, `metrics`, `sentry`, `redis`, `postgres`, `kafka`, `uvloop`, and `all` (everything except `apscheduler3`).
+- Where the documentation lives: https://bedrock-python.github.io/servicewright/, built with Zensical from `docs/` (`zensical.toml`). `docs/agents.md` is the one-page reference for coding assistants. `ARCHITECTURE.md` is the design source of truth.
 
 ## Commands
 
 | Task | Command |
 |---|---|
-| Install dependencies | |
-| Format | |
-| Lint and type-check | |
-| Test | |
-| Run locally | |
-| Stop the local run | |
+| Install dependencies | `make install` (`uv sync --group dev --extra all`). CONTRIBUTING.md's `uv sync --group dev` leaves out the extras, and then `tests/unit/test_fastapi.py` fails at collection. On Windows, see Notes. |
+| Format | `make fmt`: `uv run --no-sync ruff format .`, then `uv run --no-sync ruff check --fix .` |
+| Lint and type-check | `make check`: `uv run --no-sync ruff check .`, `ruff format --check .`, `mypy` (checks `servicewright/`) and `lint-imports` (the import contracts, see Notes). The CI lint job runs the same four. |
+| Test | `make test-unit` (`uv run --no-sync pytest -m unit`). CI runs `uv run pytest -m unit --cov=servicewright --cov-report=xml --cov-fail-under=90` on Python 3.12 and 3.13. It also runs `uv run pytest -m integration` (`make test-integration`) and the APScheduler 3.x job. `make test` runs both suites with the 90% coverage gate. |
+| Run locally | A library: nothing to run. The examples: `python examples/<name>.py` in the project environment. Each of the four exits 0 on its own. The docs: `make docs-serve`. |
+| Stop the local run | The examples stop by themselves. For `make docs-serve`, press Ctrl+C in its terminal. |
 
 ## Conventions
 
-- Default branch:
-- Issue tracker, and how commits and pull requests refer to an issue (for example `#123` or `ACME-123`):
-- Branch names (for example `fix/123-short-description`):
-- Commit messages (for example Conventional Commits):
-- Language of pull request titles and descriptions:
-- Where specs and design notes go:
+- Default branch: `master`. A repository ruleset requires a pull request with the `All checks passed` check (`ci.yml`) and blocks force pushes and deletion. Never commit to `master` directly.
+- Issue tracker: GitHub Issues of this repository, with bug-report and feature-request forms. Refer to an issue as `#123`, and close it from the pull request description with `Closes #123` (`.github/PULL_REQUEST_TEMPLATE.md`). Vulnerabilities go to a private security advisory, never to a public issue (SECURITY.md).
+- Branch names: `<type>/<short-description>`, such as `feat/drain-delay` (CONTRIBUTING.md: `feat/my-feature`).
+- Commit messages: Conventional Commits, enforced by the `conventional-pre-commit` hook (`uv run pre-commit install --hook-type commit-msg`). A breaking change takes `!` (`feat!:`) or a `BREAKING CHANGE:` footer. Pull requests are squash-merged (the history has no merge commits). release-please reads the squash title. That title is the pull request's title, or the commit subject when the pull request has one commit (`COMMIT_OR_PR_TITLE`), so both must be Conventional Commits.
+- Language of pull request titles and descriptions: English.
+- Where specs and design notes go: the design lives in `ARCHITECTURE.md`, and feature pull requests update it along with the code (#47 did). The motivation for a single change goes in the pull request's Summary (`.github/PULL_REQUEST_TEMPLATE.md`).
 
 ## Boundaries
 
-- Paths agents must not edit (generated code, vendored code, applied migrations):
-- Systems and data agents must never touch:
+- `CHANGELOG.md` is generated by release-please from the commit subjects. Never edit it by hand and never add an `## [Unreleased]` section, even where AGENTS.md or `.agents/guidelines/public-api.md` say to update the changelog. Only `feat`, `fix`, `perf` and `revert` reach it (`release-please-config.json`).
+- The version lives in `pyproject.toml` (`version = ...`) and in `.release-please-manifest.json`, and release-please bumps both. `servicewright/__version__.py` reads it from the installed package's metadata. Never change the version by hand.
+- `docs/agents.md` is part of the public API: it changes in the same pull request as the API (CONTRIBUTING.md, "The agents page").
+- Some files come from the engineering-assets hub (`AGENTS.md` explains how it works): the copy-page files (`docs/assets/javascripts/copy-page.js`, `docs/assets/stylesheets/copy-page.css`, `overrides/main.html`, `scripts/emit_markdown.py`), `.github/workflows/docs.yml`, `.github/workflows/release-please.yml`, `.github/dependabot.yml`, `.editorconfig` and `CODE_OF_CONDUCT.md`. Change them in the hub. A change made here makes the file this repository's own.
+- Never publish to PyPI or create a release by hand, and never start `publish.yml` by hand (its `workflow_dispatch` takes a tag). release-please creates the release, and `publish.yml` publishes it.
 
 ## Notes
 
-Anything else an agent needs: the architecture in a few lines, known pitfalls, how to get test data.
+- Releases: release-please opens its pull request with the workflow's own token, so CI does not start on it and the required check never reports. Close and reopen the release pull request to run CI, then merge it. `publish.yml` publishes to PyPI when the Release Please run on `master` completes and the commit carries a `servicewright-v*` tag. Before 1.0, a breaking change bumps the minor version (`bump-minor-pre-major`).
+- Architecture (ARCHITECTURE.md): `servicewright/core/` is the stdlib-only kernel and never imports `servicewright/adapters/`, and adapters never import each other. Three import-linter contracts in `pyproject.toml` enforce this (`make check`).
+- Tests: every test module declares `pytestmark = pytest.mark.unit` or `integration` (`--strict-markers`), and `tests/conftest.py` also marks tests by directory. Names follow `test__subject__condition__expectedresult`, in Arrange-Act-Assert order (CONTRIBUTING.md). The integration tests start real in-process servers (uvicorn, gRPC, APScheduler) on loopback and need no Docker, although CONTRIBUTING.md says they do.
+- APScheduler: `apscheduler3` and `apscheduler4` are one distribution and cannot share an environment (`[tool.uv].conflicts`). The dev environment carries 4.x, so the 3.x tests skip locally. `make test-apscheduler3` runs them in a throwaway `.venv-aps3`, as the CI job `test-apscheduler3` does.
+- Windows: `make install` fails, because the `all` extra and the `test` group require uvloop, which does not support Windows. `uv sync --group dev --extra all --no-install-package uvloop` works, and the uvloop tests then skip. CI runs on Ubuntu only.
+- `examples/` is linted by ruff but neither type-checked nor run in CI. After an API change, run the four scripts.
+- Code style (CONTRIBUTING.md): type hints on every function, tests included; Google-style docstrings on the public API only; lines up to 120 characters; double quotes; comments only for a non-obvious why.
