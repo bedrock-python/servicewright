@@ -4,17 +4,17 @@
 
 - What this repository is: `servicewright`, a batteries-optional microservice runtime for async Python, published on PyPI. A service is described once as an `AppSpec`, and one `Host` runs it through any number of entrypoints: HTTP, gRPC, scheduler, daemon, one-shot.
 - Who uses it: authors of async Python services, such as HTTP and gRPC APIs, scheduled jobs, background workers and batch jobs, including several of them in one process.
-- Language, version and main frameworks: Python 3.12 and newer (CI tests 3.12 and 3.13), with no runtime dependencies. The kernel is `servicewright/core/`. Every framework binding is an extra-gated adapter in `servicewright/adapters/`. The extras are `fastapi`, `litestar`, `grpc`, `apscheduler4`, `apscheduler3`, `dishka`, `settings`, `observability`, `fastapi-tracing`, `metrics`, `sentry`, `redis`, `postgres`, `kafka`, `uvloop`, and `all` (everything except `apscheduler3`).
+- Language, version and main frameworks: Python 3.12 and newer (CI tests 3.12, 3.13 and 3.14), with no runtime dependencies. The kernel is `servicewright/core/`. Every framework binding is an extra-gated adapter in `servicewright/adapters/`. The extras are `fastapi`, `litestar`, `grpc`, `apscheduler4`, `apscheduler3`, `dishka`, `settings`, `observability`, `fastapi-tracing`, `metrics`, `sentry`, `redis`, `postgres`, `kafka`, `uvloop`, and `all` (everything except `apscheduler3`).
 - Where the documentation lives: https://bedrock-python.github.io/servicewright/, built with Zensical from `docs/` (`zensical.toml`). `docs/agents.md` is the one-page reference for coding assistants. `ARCHITECTURE.md` is the design source of truth.
 
 ## Commands
 
 | Task | Command |
 |---|---|
-| Install dependencies | `make install` (`uv sync --group dev --extra all`). CONTRIBUTING.md's `uv sync --group dev` leaves out the extras, and then `tests/unit/test_fastapi.py` fails at collection. On Windows, see Notes. |
+| Install dependencies | `make install` (`uv sync --group dev --extra all`), as CONTRIBUTING.md says. Without the extras, `tests/unit/test_fastapi.py` fails at collection. On Windows, see Notes. |
 | Format | `make fmt`: `uv run --no-sync ruff format .`, then `uv run --no-sync ruff check --fix .` |
 | Lint and type-check | `make check`: `uv run --no-sync ruff check .`, `ruff format --check .`, `mypy` (checks `servicewright/`) and `lint-imports` (the import contracts, see Notes). The CI lint job runs the same four. |
-| Test | `make test-unit` (`uv run --no-sync pytest -m unit`). CI runs `uv run pytest -m unit --cov=servicewright --cov-report=xml --cov-fail-under=90` on Python 3.12 and 3.13. It also runs `uv run pytest -m integration` (`make test-integration`) and the APScheduler 3.x job. `make test` runs both suites with the 90% coverage gate. |
+| Test | `make test-unit` (`uv run --no-sync pytest -m unit`). CI runs `uv run pytest -m unit --cov=servicewright --cov-report=xml --cov-fail-under=90` on Python 3.12, 3.13 and 3.14. It also runs `uv run pytest -m integration` (`make test-integration`) and the APScheduler 3.x job. `make test` runs both suites with the 90% coverage gate. |
 | Run locally | A library: nothing to run. The examples: `python examples/<name>.py` in the project environment. Each of the four exits 0 on its own. The docs: `make docs-serve`. |
 | Stop the local run | The examples stop by themselves. For `make docs-serve`, press Ctrl+C in its terminal. |
 
@@ -39,7 +39,7 @@
 
 - Releases: release-please opens its pull request with the workflow's own token, so CI does not start on it and the required check never reports. Close and reopen the release pull request to run CI, then merge it. `publish.yml` publishes to PyPI when the Release Please run on `master` completes and the commit carries a `servicewright-v*` tag. Before 1.0, a breaking change bumps the minor version (`bump-minor-pre-major`).
 - Architecture (ARCHITECTURE.md): `servicewright/core/` is the stdlib-only kernel and never imports `servicewright/adapters/`, and adapters never import each other. Three import-linter contracts in `pyproject.toml` enforce this (`make check`).
-- Tests: every test module declares `pytestmark = pytest.mark.unit` or `integration` (`--strict-markers`), and `tests/conftest.py` also marks tests by directory. Names follow `test__subject__condition__expectedresult`, in Arrange-Act-Assert order (CONTRIBUTING.md). The integration tests start real in-process servers (uvicorn, gRPC, APScheduler) on loopback and need no Docker, although CONTRIBUTING.md says they do.
+- Tests: every test module declares `pytestmark = pytest.mark.unit` or `integration` (`--strict-markers`), and `tests/conftest.py` also marks tests by directory. Names follow `test__subject__condition__expectedresult`, in Arrange-Act-Assert order (CONTRIBUTING.md). The integration tests start real in-process servers (uvicorn, gRPC, APScheduler) on loopback and need no Docker.
 - APScheduler: `apscheduler3` and `apscheduler4` are one distribution and cannot share an environment (`[tool.uv].conflicts`). The dev environment carries 4.x, so the 3.x tests skip locally. `make test-apscheduler3` runs them in a throwaway `.venv-aps3`, as the CI job `test-apscheduler3` does.
 - Windows: `make install` fails, because the `all` extra and the `test` group require uvloop, which does not support Windows. `uv sync --group dev --extra all --no-install-package uvloop` works, and the uvloop tests then skip. CI runs on Ubuntu only.
 - `examples/` is linted by ruff but neither type-checked nor run in CI. After an API change, run the four scripts.
