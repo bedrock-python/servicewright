@@ -7,16 +7,20 @@ Thank you for your interest in contributing! This document covers everything you
 ```bash
 git clone https://github.com/bedrock-python/servicewright.git
 cd servicewright
-uv sync --group dev
+uv sync --group dev --extra all
 uv run pre-commit install --hook-type commit-msg
 ```
+
+On Windows, `uv sync --group dev --extra all` fails because the `all` extra and the `test`
+group pull in uvloop, which does not support Windows. Install with
+`uv sync --group dev --extra all --no-install-package uvloop` instead; the uvloop tests then skip.
 
 ## Running checks
 
 ```bash
-make check            # ruff lint + format check + mypy
+make check            # ruff lint + format check + mypy + lint-imports
 make test-unit        # unit tests, no Docker required
-make test-integration # integration tests, requires Docker
+make test-integration # integration tests, in-process servers on loopback, no Docker required
 make test             # full suite with 90% coverage threshold
 ```
 
