@@ -14,6 +14,7 @@ from typing import Any
 
 import httpx
 import pytest
+from fastapi import APIRouter
 
 from servicewright import AppSpec, Service
 from servicewright.adapters.fastapi import FastApiEntrypoint, HttpConfig
@@ -65,3 +66,41 @@ async def test__fastapi_entrypoint__real_server__serves_requests_then_drains() -
     # After graceful shutdown, readiness is flipped off and the app was built.
     assert spec.health.ready is False
     assert ep.app is not None
+
+
+async def test__fastapi_entrypoint__request_outlives_the_drain_grace__uvicorn_cancels_it_at_the_grace() -> None:
+    # Arrange
+    port = _free_port()
+    spec: AppSpec[Any, Any] = AppSpec(
+        service_name="http-it-service", create_container=lambda _s: FakeContainer(), drain_grace_seconds=1.0
+    )
+    router = APIRouter()
+    handler_finished = False
+
+    @router.get("/report")
+    async def report() -> dict[str, str]:
+        nonlocal handler_finished
+        await asyncio.sleep(5.0)
+        handler_finished = True
+        return {"status": "done"}
+
+    ep = FastApiEntrypoint(config=HttpConfig(host="127.0.0.1", port=port), routers=(router,))
+    stop = asyncio.Event()
+
+    async def request_then_stop() -> httpx.Response:
+        while not spec.health.ready:
+            await asyncio.sleep(0.01)
+        async with httpx.AsyncClient(base_url=f"http://127.0.0.1:{port}", timeout=10.0) as client:
+            request = asyncio.create_task(client.get("/report"))
+            await asyncio.sleep(0.2)
+            stop.set()
+            return await request
+
+    # Act
+    _, response = await asyncio.gather(
+        Service(spec, entrypoints=[ep]).run(FakeSettings(), stop=stop), request_then_stop()
+    )
+
+    # Assert
+    assert response.status_code == 500, "uvicorn cancels the request itself, not a hard stop that orphans it"
+    assert handler_finished is False

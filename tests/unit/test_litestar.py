@@ -89,6 +89,8 @@ class _FakeUvicornConfig:
     def __init__(self, app: Any, **kwargs: Any) -> None:
         self.app = app
         self.kwargs = kwargs
+        # The one setting uvicorn reads at shutdown rather than at construction.
+        self.timeout_graceful_shutdown = kwargs.get("timeout_graceful_shutdown")
 
 
 @pytest.fixture
@@ -120,7 +122,7 @@ def test__litestar_config__default__uses_the_documented_values() -> None:
     config = LitestarConfig()
     assert config.host == "0.0.0.0"
     assert config.port == 8000
-    assert config.graceful_timeout == 10.0
+    assert config.graceful_timeout == 30.0
     assert config.address == "0.0.0.0:8000"
     assert config.health.liveness_path == "/system/livez"
     assert config.health.readiness_path == "/system/readyz"
@@ -507,6 +509,25 @@ async def test__litestar_drain__called__asks_uvicorn_to_stop_accepting(patched_u
     await ep.drain(1.0)
     assert patched_uvicorn["server"].should_exit is True
     assert ep._runner._stopped is True
+
+
+async def test__litestar_drain__default_config__gives_uvicorn_the_hosts_grace(
+    patched_uvicorn: dict[str, Any],
+) -> None:
+    ep = LitestarEntrypoint(config=LitestarConfig(port=0))
+    await ep.bind(_make_service_ctx(FakeContainer()))
+
+    stop = asyncio.Event()
+
+    async def drive() -> None:
+        while "server" not in patched_uvicorn or not patched_uvicorn["server"].serve_started:
+            await asyncio.sleep(0)
+        stop.set()
+
+    await asyncio.gather(ep.serve(stop=stop), drive())
+    await ep.drain(12.5)
+
+    assert patched_uvicorn["server"].config.timeout_graceful_shutdown == 13
 
 
 async def test__litestar_drain__called_before_serve__does_nothing() -> None:
