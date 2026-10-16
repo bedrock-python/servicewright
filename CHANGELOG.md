@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.14.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.13.2...servicewright-v0.14.0) (2026-10-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* a ServiceError with kind=ErrorKind.PRECONDITION_FAILED now answers HTTP 400 instead of 412 (gRPC stays FAILED_PRECONDITION). Clients that branch on 412 should branch on the error code in the problem document. To keep 412 while they migrate, pass a renderer that sets status_override=412 for that kind; the errors page has a five-line example.
+
+### Bug Fixes
+
+* drain_grace_seconds bounds a serve() that is still running after stop ([#91](https://github.com/bedrock-python/servicewright/issues/91)) ([5011e4d](https://github.com/bedrock-python/servicewright/commit/5011e4d09fde00e770439baca92012020acbceca)), closes [#88](https://github.com/bedrock-python/servicewright/issues/88)
+* ErrorKind.PRECONDITION_FAILED renders as HTTP 400, not 412 ([#94](https://github.com/bedrock-python/servicewright/issues/94)) ([a37a72d](https://github.com/bedrock-python/servicewright/commit/a37a72d8482dff2a188eb7c415c6433699120269))
+
 ## [0.13.2](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.13.1...servicewright-v0.13.2) (2026-10-16)
 
 
