@@ -107,3 +107,59 @@ async def test__grpc_entrypoint__servicer_raises_an_unexpected_exception__client
     assert error.details() == "internal_error"
     assert dict(error.trailing_metadata() or ())["x-error-code"] == "internal_error"
     assert _SECRET not in str(error.details())
+
+
+async def test__grpc_entrypoint__outbound_call_fails__client_gets_a_masked_internal() -> None:
+    # Arrange — a downstream service that aborts with a message meant for nobody outside.
+    async def get(request: bytes, context: grpc.aio.ServicerContext[bytes, bytes]) -> bytes:
+        await context.abort(grpc.StatusCode.INTERNAL, _SECRET)
+
+    downstream = grpc.aio.server()
+    downstream.add_generic_rpc_handlers(
+        (grpc.method_handlers_generic_handler("lab.Ledger", {"Get": grpc.unary_unary_rpc_method_handler(get)}),)
+    )
+    downstream_port = downstream.add_insecure_port("127.0.0.1:0")
+    await downstream.start()
+
+    def register_forwarding_servicer(server: Any, _ctx: Any) -> None:
+        async def pay(request: bytes, context: Any) -> bytes:
+            async with grpc.aio.insecure_channel(f"127.0.0.1:{downstream_port}") as channel:
+                return await channel.unary_unary("/lab.Ledger/Get")(request, timeout=5)
+
+        server.add_generic_rpc_handlers(
+            (grpc.method_handlers_generic_handler(_SERVICE, {"Pay": grpc.unary_unary_rpc_method_handler(pay)}),)
+        )
+
+    spec: AppSpec[Any, Any] = AppSpec(service_name="grpc-outbound-it", create_container=lambda _s: FakeContainer())
+    config = GrpcConfig(host="127.0.0.1", port=0, enable_reflection=False, enable_channelz=False)
+    ep = GrpcEntrypoint(config=config, servicers=register_forwarding_servicer)
+    service = Service(spec, entrypoints=[ep])
+
+    stop = asyncio.Event()
+    failures: list[grpc.aio.AioRpcError] = []
+
+    async def call_then_stop() -> None:
+        while not (spec.health.ready and ep.bound_port):
+            await asyncio.sleep(0.01)
+        await asyncio.sleep(0.05)
+
+        async with grpc.aio.insecure_channel(f"127.0.0.1:{ep.bound_port}") as channel:
+            try:
+                await channel.unary_unary(f"/{_SERVICE}/Pay")(b"42", timeout=5)
+            except grpc.aio.AioRpcError as error:
+                failures.append(error)
+
+        stop.set()
+
+    # Act
+    try:
+        await asyncio.gather(service.run(FakeSettings(), stop=stop), call_then_stop())
+    finally:
+        await downstream.stop(grace=None)
+
+    # Assert — re-raised, the downstream AioRpcError would reach the client as UNKNOWN with its details.
+    error = failures[0]
+    assert error.code() is grpc.StatusCode.INTERNAL
+    assert error.details() == "internal_error"
+    assert dict(error.trailing_metadata() or ())["x-error-code"] == "internal_error"
+    assert _SECRET not in str(error.details())

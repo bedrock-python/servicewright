@@ -105,17 +105,19 @@ class UnhandledErrorInterceptor(AsyncServerInterceptor):
     :class:`GrpcEntrypoint` adds it inside :class:`UnitScopeInterceptor` — so
     the log record still carries the correlation ids — and outside your own
     interceptors, so an exception type you map yourself reaches your
-    interceptor first and never gets here. A deliberate status passes through:
-    ``grpc.aio.AbortError`` and ``grpc.RpcError`` are re-raised, and
-    ``asyncio.CancelledError`` is a ``BaseException``, so a caller that walks
-    away is not an error to report.
+    interceptor first and never gets here. Only ``grpc.aio.AbortError`` passes
+    through: ``context.abort()`` raises it, so its status is one the handler
+    chose. A ``grpc.aio.AioRpcError`` from an outbound call is the status a
+    downstream service gave this server, and it is masked like any other
+    exception. ``asyncio.CancelledError`` is a ``BaseException``, so a caller
+    that walks away is not an error to report.
     """
 
     async def around_call(self, call: RpcCall) -> AsyncIterator[None]:
         """Run the RPC; mask anything that comes out of it without a status."""
         try:
             yield
-        except (grpc.aio.AbortError, grpc.RpcError):
+        except grpc.aio.AbortError:
             raise
         except Exception:
             logger.exception("Unhandled exception while serving RPC", extra={"grpc_method": call.method_name})

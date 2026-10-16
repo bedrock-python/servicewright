@@ -106,9 +106,13 @@ indistinguishable to a caller. Without it `grpc.aio` answers `UNKNOWN` with `rep
 exception, so the one error class whose wording nobody reviewed is the one that reaches the wire
 verbatim.
 
-Three things are left alone, because each already carries a decision:
-`grpc.aio.AbortError` and `grpc.RpcError` (a status a handler chose itself) are re-raised, and
+Two things are left alone, because each already carries a decision: `grpc.aio.AbortError`, which
+`context.abort()` raises with a status the handler chose itself, is re-raised, and
 `asyncio.CancelledError` never reaches it — a caller that walked away is not a failure to report.
+
+A failed outbound call is not one of them. `grpc.aio.AioRpcError` is the status a downstream service
+returned to this server; re-raised, it would reach your caller as `UNKNOWN` with the downstream
+details in it. It is logged and masked like any other unhandled exception.
 
 `map_service_errors=False` does not remove it. That flag turns off the mapping of the errors you
 declared; with it off a `ServiceError` reaches the client as a masked `INTERNAL` like any other
