@@ -39,6 +39,11 @@ except ImportError as exc:  # pragma: no cover - exercised only without the extr
 logger = logging.getLogger(__name__)
 
 DEFAULT_LISTEN_BACKLOG = 2048
+# uvicorn starts its shutdown clock only after it notices ``should_exit`` and
+# asks open connections to close; past its own timeout it still has to cancel
+# the stragglers and return. Waiting this much longer lets it do so instead of
+# racing it into the hard stop, which would leave those requests running on.
+_SHUTDOWN_MARGIN_SECONDS = 1.0
 
 
 @contextlib.contextmanager
@@ -53,8 +58,8 @@ class UvicornRunner:
     Args:
         host: Interface to bind.
         port: Port to bind; ``0`` lets the OS choose (see :attr:`bound_port`).
-        graceful_timeout: Seconds uvicorn lets in-flight requests finish during
-            shutdown.
+        graceful_timeout: Cap on the Host's drain grace for in-flight requests;
+            ``0`` or less means no cap of its own.
         uvicorn_kwargs: Extra ``uvicorn.Config`` keyword arguments.
         label: Transport name used in log records.
     """
@@ -75,6 +80,7 @@ class UvicornRunner:
         self._label = label
 
         self._server: uvicorn.Server | None = None
+        self._configured_timeout: float | None = None
         self._serve_task: asyncio.Task[None] | None = None
         self._socket: socket.socket | None = None
         self._bound_port: int | None = None
@@ -135,12 +141,20 @@ class UvicornRunner:
             await self._reraise_server_failure(self._serve_task)
 
     async def drain(self, grace: float) -> None:
-        """Close the listener and let in-flight requests finish within ``grace``."""
+        """Close the listener and let in-flight requests finish within ``grace``.
+
+        uvicorn cancels the requests still running once its own
+        ``timeout_graceful_shutdown`` expires, and reads it only now, on the way
+        out. It is set to ``grace`` here, so the Host's window governs; a
+        configured timeout can only shorten it.
+        """
         if self._server is None or self._serve_task is None or self._stopped:
             return
+        timeout = self._shutdown_timeout(grace)
+        self._server.config.timeout_graceful_shutdown = timeout
         self._server.should_exit = True
         try:
-            await asyncio.wait_for(asyncio.shield(self._serve_task), timeout=grace)
+            await asyncio.wait_for(asyncio.shield(self._serve_task), timeout=timeout + _SHUTDOWN_MARGIN_SECONDS)
         except TimeoutError:
             logger.warning(
                 "%s drain timed out", self._label, extra={"host": self._host, "port": self._bound_port, "grace": grace}
@@ -173,6 +187,7 @@ class UvicornRunner:
             "timeout_graceful_shutdown": self._graceful_timeout_seconds(),
         }
         params.update(self._uvicorn_kwargs)
+        self._configured_timeout = params["timeout_graceful_shutdown"]
         server = uvicorn.Server(uvicorn.Config(app, **params))
         # The Host owns OS signals; uvicorn must not install its own handlers.
         server.capture_signals = _no_signal_capture  # type: ignore[method-assign]
@@ -187,6 +202,11 @@ class UvicornRunner:
         if self._graceful_timeout <= 0:
             return None
         return max(1, math.ceil(self._graceful_timeout))
+
+    def _shutdown_timeout(self, grace: float) -> int:
+        """uvicorn's timeout for this drain: ``grace``, shortened by the configured one."""
+        budget = grace if self._configured_timeout is None else min(grace, self._configured_timeout)
+        return max(1, math.ceil(budget))
 
     @staticmethod
     async def _reraise_server_failure(serve_task: asyncio.Task[None]) -> None:

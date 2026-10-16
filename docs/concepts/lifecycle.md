@@ -123,6 +123,12 @@ A timeout is logged and then surfaced from `run()` — but only if nothing else 
 propagating. A shutdown that blew its budget must never mask the failure that caused the shutdown
 in the first place.
 
+Server entrypoints carry a drain timeout of their own — `graceful_timeout` for
+[FastAPI](../adapters/fastapi.md#drain-semantics) and Litestar, `grace_period` for
+[gRPC](../adapters/grpc.md#drain-semantics). It can only shorten `drain_grace_seconds`, never
+stretch it: a request gets `min(drain_grace_seconds, cap)`. Both caps default to the default grace,
+30 seconds, so raise them with `drain_grace_seconds`.
+
 !!! tip "Match the shutdown budgets to Kubernetes"
 
     Keep `terminationGracePeriodSeconds` larger than

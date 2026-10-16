@@ -78,7 +78,7 @@ FastApiEntrypoint(
 | --- | --- | --- |
 | `host` | `"0.0.0.0"` | Bind host |
 | `port` | `8000` | Bind port (`0` picks a free one; read it back from `bound_port`) |
-| `graceful_timeout` | `10.0` | uvicorn's own shutdown timeout |
+| `graceful_timeout` | `30.0` | Cap on the Host's drain grace for in-flight requests; `0` sets no cap ([below](#drain-semantics)) |
 | `title` | `None` | OpenAPI title; defaults to `AppSpec.service_name` |
 | `version` | `"0.0.0"` | OpenAPI version |
 | `openapi_url` | `/system/openapi.json` | Schema path |
@@ -467,6 +467,19 @@ http = FastApiEntrypoint(config=HttpConfig(port=0))
 http.bound_port   # e.g. 54312
 http.app          # the built FastAPI instance, or None before bind
 ```
+
+## Drain semantics
+
+The time an in-flight request gets after intake stops is `min(host_grace, config.graceful_timeout)`:
+
+- the Host's [`drain_grace_seconds`](../concepts/lifecycle.md#budgets) bounds the shutdown;
+- `graceful_timeout` can only shorten it, and `0` sets no cap of its own.
+
+`drain(grace)` hands that budget to uvicorn as `timeout_graceful_shutdown`, rounded up to whole
+seconds. A request still running when it expires is cancelled by uvicorn and answers `500`.
+The default `graceful_timeout` equals the default `drain_grace_seconds`, 30 seconds, so if you
+raise `drain_grace_seconds` above that, raise `graceful_timeout` with it or set it to `0`. The
+rule is the same as gRPC's [`grace_period`](grpc.md#drain-semantics).
 
 ## Testing
 

@@ -40,7 +40,7 @@ service = Service(spec, entrypoints=[http])
 | --- | --- | --- |
 | `host` | `"0.0.0.0"` | Bind host |
 | `port` | `8000` | Bind port (`0` picks a free one) |
-| `graceful_timeout` | `10.0` | uvicorn's own shutdown timeout |
+| `graceful_timeout` | `30.0` | Cap on the Host's drain grace for in-flight requests; `0` sets no cap. Same rule as [FastAPI](fastapi.md#drain-semantics) |
 | `litestar_kwargs` | `{}` | Forwarded to `Litestar(...)` |
 | `uvicorn_kwargs` | `{}` | Forwarded to `uvicorn.Config(...)` |
 | `health` | `HealthConfig()` | `enabled`, `liveness_path`, `readiness_path` |
@@ -151,7 +151,9 @@ LitestarEntrypoint(configure_app=configure_app)
 ## Lifecycle notes
 
 Identical in shape to the FastAPI adapter: no container-managing lifespan, the socket opens in
-`bind()`, `serve()` returns while still accepting, `drain()` closes the listener.
+`bind()`, `serve()` returns while still accepting, `drain()` closes the listener and gives
+in-flight requests `min(host_grace, config.graceful_timeout)` — the FastAPI page's
+[drain semantics](fastapi.md#drain-semantics) apply unchanged.
 
 ```python
 http.bound_port   # what the OS picked when port=0
