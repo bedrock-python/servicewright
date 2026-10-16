@@ -598,6 +598,110 @@ async def test__host_run__shutdown_step_is_cancelled__propagates_the_cancellatio
         await asyncio.gather(host.run(FakeSettings(), [entrypoint], stop=stop), stop_when_ready())
 
 
+class _UnitInFlight(_Recording):
+    """Scoped entrypoint whose current unit of work is still running when ``stop`` arrives."""
+
+    def __init__(self, spec: AppSpec[Any, Any], *, unit_seconds: float, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._spec = spec
+        self._unit_seconds = unit_seconds
+        self.ready_while_finishing: bool | None = None
+        self.unit_finished = False
+        self.unit_cancelled = False
+
+    async def serve(self, *, stop: asyncio.Event) -> None:
+        self.events.append("serve")
+        async with self.unit_scope():
+            await stop.wait()
+            try:
+                await asyncio.sleep(self._unit_seconds)
+            except asyncio.CancelledError:
+                self.unit_cancelled = True
+                raise
+            self.ready_while_finishing = self._spec.health.ready
+            self.unit_finished = True
+
+
+@pytest.fixture
+def no_drain_buffer(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Drop the fixed 5 s slack on top of the drain grace, so budget tests stay fast."""
+    monkeypatch.setattr("servicewright.core.aio.host.DEFAULT_DRAIN_TIMEOUT_BUFFER_SECONDS", 0.0)
+
+
+@pytest.mark.usefixtures("no_drain_buffer")
+async def test__host_run__serve_outlasts_the_drain_grace_after_stop__cancels_it_and_raises_drain_timeout_error(
+    spec: AppSpec[Any, Any],
+    host: Host[Any, Any],
+    stop: asyncio.Event,
+    stop_when_ready: Callable[[], asyncio.Future[None]],
+) -> None:
+    # Arrange
+    spec.drain_grace_seconds = FAST_BUDGET
+    outbox = _UnitInFlight(spec, kind="outbox", unit_seconds=30)
+
+    # Act & Assert
+    with pytest.raises(DrainTimeoutError, match="serve"):
+        await asyncio.wait_for(
+            asyncio.gather(host.run(FakeSettings(), [outbox], stop=stop), stop_when_ready()), timeout=5
+        )
+
+    assert outbox.unit_cancelled is True
+    assert outbox.events == ["bind", "serve", "drain", "stop"]
+
+
+@pytest.mark.usefixtures("no_drain_buffer")
+async def test__host_run__serve_returns_within_the_drain_grace_after_stop__lets_the_unit_finish(
+    spec: AppSpec[Any, Any],
+    host: Host[Any, Any],
+    stop: asyncio.Event,
+    stop_when_ready: Callable[[], asyncio.Future[None]],
+) -> None:
+    # Arrange
+    spec.drain_grace_seconds = 5
+    outbox = _UnitInFlight(spec, kind="outbox", unit_seconds=FAST_BUDGET)
+
+    # Act
+    await asyncio.gather(host.run(FakeSettings(), [outbox], stop=stop), stop_when_ready())
+
+    # Assert
+    assert outbox.unit_finished is True
+    assert outbox.unit_cancelled is False
+
+
+async def test__host_run__serve_still_finishing_its_unit_after_stop__readiness_is_already_withdrawn(
+    spec: AppSpec[Any, Any],
+    host: Host[Any, Any],
+    stop: asyncio.Event,
+    stop_when_ready: Callable[[], asyncio.Future[None]],
+) -> None:
+    # Arrange
+    outbox = _UnitInFlight(spec, kind="outbox", unit_seconds=FAST_BUDGET)
+    http = FakeEntrypoint(kind="http")
+
+    # Act
+    await asyncio.gather(host.run(FakeSettings(), [http, outbox], stop=stop), stop_when_ready())
+
+    # Assert
+    assert outbox.ready_while_finishing is False
+
+
+async def test__host_run__every_non_essential_entrypoint_returns__shuts_down_without_a_stop(
+    host: Host[Any, Any],
+    stop: asyncio.Event,
+) -> None:
+    # Arrange
+    first = FakeEntrypoint(kind="first", essential=False, run_once=True)
+    second = FakeEntrypoint(kind="second", essential=False, run_once=True)
+
+    # Act
+    await asyncio.wait_for(host.run(FakeSettings(), [first, second], stop=stop), timeout=5)
+
+    # Assert
+    assert stop.is_set() is False
+    assert first.events == ["bind", "serve", "drain", "stop"]
+    assert second.events == ["bind", "serve", "drain", "stop"]
+
+
 # --------------------------------------------------------------------------- #
 # Drain delay — the window in which the service is unready and still accepting
 # --------------------------------------------------------------------------- #

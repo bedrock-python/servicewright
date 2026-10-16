@@ -183,7 +183,8 @@ async def test__consumer__message_arrives__handled_in_its_own_scope() -> None:
 - [ ] Extends `ScopedEntrypoint` (you open the scope) or `ServerEntrypoint` (the framework does).
 - [ ] `bind` calls `super().bind(ctx)` and raises on unavailable resources.
 - [ ] `bind` allocates but accepts nothing.
-- [ ] `serve` returns promptly when `stop` is set, and returns **while still accepting**.
+- [ ] `serve` returns promptly when `stop` is set, and returns **while still accepting**. The
+      unit in flight gets `drain_grace_seconds` to finish; past that the Host cancels `serve`.
 - [ ] `serve` raises only for failures that should stop the process.
 - [ ] `drain` stops intake and honours `grace`.
 - [ ] `stop` is idempotent and safe after a partial `bind`.

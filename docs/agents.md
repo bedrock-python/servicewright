@@ -79,7 +79,8 @@ configure observability
   → bind() each entrypoint, in order
   → health.ready = True → post_start hooks
   → serve() all concurrently, until stop
-  → health.ready = False
+  → health.ready = False (as soon as stop is set)
+  → every serve() returns, within drain_grace_seconds + 5 (else cancelled)
   → drain(grace) in reverse bind order
   → stop() in reverse bind order
   → pre_shutdown hooks (app scope still open)
@@ -387,8 +388,9 @@ Each `*Plugin` takes exactly the same arguments as its entrypoint and exposes `.
    shutdown step is logged and skipped so the others still get their turn.
 5. **Warmup's budget is a fixed 60 seconds and is not an `AppSpec` field.** Only
    `drain_delay_seconds` (0.0), `drain_grace_seconds` (30.0) and `cleanup_timeout_seconds`
-   (10.0) are configurable. The delay is spent once, before the first drain; the drain step
-   is allowed `drain_grace_seconds + 5`; every post-drain step gets `cleanup_timeout_seconds`.
+   (10.0) are configurable. The delay is spent once, before the first drain; once `stop` is
+   set, every `serve()` still running is allowed `drain_grace_seconds + 5` to return (then it
+   is cancelled), and so is each drain step; every post-drain step gets `cleanup_timeout_seconds`.
    `terminationGracePeriodSeconds` must exceed the sum of all three. An overrun raises
    `DrainTimeoutError` / `CleanupTimeoutError` out of `run()` — but only when nothing else is
    already propagating.
@@ -588,7 +590,7 @@ Every runtime error derives from `ServiceWrightError`:
 | `ServiceWrightError` | base class for everything the runtime raises |
 | `WarmupError` | a warmer failed (or the engine's own timeout elapsed) with failure raising enabled |
 | `WarmupTimeoutError` | warmup did not finish inside its 60-second budget (also a `TimeoutError`) |
-| `DrainTimeoutError` | an entrypoint's `drain` outlived `drain_grace_seconds + 5` (also a `TimeoutError`) |
+| `DrainTimeoutError` | an entrypoint's `serve()` (after `stop`) or `drain` outlived `drain_grace_seconds + 5` (also a `TimeoutError`) |
 | `CleanupTimeoutError` | a `stop()`, hook or observability flush outlived `cleanup_timeout_seconds` (also a `TimeoutError`) |
 | `RedisWarmupError`, `PostgresWarmupError`, `KafkaProducerWarmupError` | the matching built-in warmer failed; all subclass `WarmupError` |
 

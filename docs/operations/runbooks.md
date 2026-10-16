@@ -255,10 +255,13 @@ Exit code `137` means `SIGKILL` arrived. Raise the grace period, or lower the bu
 ### `DrainTimeoutError` in the logs
 
 An entrypoint did not finish draining within `drain_grace_seconds + 5s`. The log line names the
-`kind`, so you know which one.
+`kind`, so you know which one, and the `phase`: `serve` means its `serve()` was still running a
+unit of work and was cancelled, `drain` means `drain()` itself overran.
 
 - HTTP: a request is running longer than the window. Bound your handlers, or raise the window.
 - Scheduler: a job is running long. It is logged with `job_id` and `run_id`.
+- Consumer, daemon or one-shot (`phase=serve`): the unit in flight when `SIGTERM` arrived took
+  longer than the window. Make the unit smaller, check `stop` between units, or raise the window.
 - Custom entrypoint: your `drain()` is not returning — check the in-flight polling loop.
 
 The error is raised out of `run()` only if nothing else is already propagating, so it never masks

@@ -200,9 +200,11 @@ if __name__ == "__main__":
     main()
 ```
 
-Shutdown, in order: readiness goes false, then the consumer drains and commits, then the outbox
-loop returns, then the scheduler pauses and waits for its running job — all within
-`drain_grace_seconds` — and the connection pool closes last.
+Shutdown, in order: readiness goes false as soon as `SIGTERM` arrives; the consumer finishes the
+message it is handling and the outbox loop finishes its batch, both inside `serve()`; then the
+consumer drains and commits, and the scheduler pauses and waits for its running job. Each of those
+steps gets `drain_grace_seconds`, and a `serve()` that outlives it is cancelled. The connection
+pool closes last.
 
 ## 5. Health and metrics without an HTTP port
 

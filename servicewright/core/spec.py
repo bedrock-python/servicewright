@@ -80,7 +80,11 @@ class AppSpec[TSettings: "BaseServiceSettingsProtocol", TContainer: "DependencyC
     warmers: list[AsyncWarmer] = field(default_factory=list)
     warmers_factory: WarmerFactory | None = None
     drain_grace_seconds: float = DEFAULT_DRAIN_GRACE_SECONDS
-    """How long each entrypoint gets to finish in-flight work during drain."""
+    """How long each entrypoint gets to finish in-flight work once ``stop`` is set.
+
+    It bounds both places in-flight work can be: a ``serve()`` that has not
+    returned yet (a consumer's batch, a daemon's iteration) and each ``drain()``.
+    """
     cleanup_timeout_seconds: float = DEFAULT_CLEANUP_TIMEOUT_SECONDS
     """Budget for each post-drain step (``stop()``, hooks, observability flush)."""
     drain_delay_seconds: float = DEFAULT_DRAIN_DELAY_SECONDS

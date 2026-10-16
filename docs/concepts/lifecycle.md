@@ -57,19 +57,28 @@ is what actually closes the listener.
 If the HTTP entrypoint shut uvicorn down inside `serve()` instead, the readiness endpoint would
 die before the load balancer noticed, and the drain window would be meaningless.
 
+A scoped entrypoint — a consumer, a daemon, a one-shot job — may be in the middle of a unit of
+work when `stop` arrives, and that unit finishes inside `serve()`. The Host withdraws readiness
+as soon as `stop` is set and gives every `serve()` still running `drain_grace_seconds` (plus 5
+seconds) to return. One that is still running then is cancelled at its next await point, which
+unwinds its unit scope, and reported as a `DrainTimeoutError`.
+
 ## Shutdown
 
-1. **`health.ready = False` first.** Load balancers stop routing before you stop accepting.
-2. **`drain_delay_seconds` pass** with every entrypoint still accepting. Readiness going red
+1. **`health.ready = False` first**, the moment `stop` is set. Load balancers stop routing before
+   you stop accepting.
+2. **Every `serve()` returns**, within `drain_grace_seconds` + 5s; a unit of work that was in
+   flight finishes here.
+3. **`drain_delay_seconds` pass** with every entrypoint still accepting. Readiness going red
    reaches the routing layer asynchronously; this is the window in which it catches up. The
    default is `0.0`, and the wait is skipped when the service never reached Ready.
-3. **`drain(grace)`** on every bound entrypoint, in **reverse** bind order. Intake stops;
+4. **`drain(grace)`** on every bound entrypoint, in **reverse** bind order. Intake stops;
    in-flight work finishes inside the window.
-4. **`stop()`** on every bound entrypoint, in reverse order. Hard stop, time-boxed.
-5. **`pre_shutdown` hooks** — the application scope is still alive here. Flush the outbox, emit
+5. **`stop()`** on every bound entrypoint, in reverse order. Hard stop, time-boxed.
+6. **`pre_shutdown` hooks** — the application scope is still alive here. Flush the outbox, emit
    final events.
-6. **The application scope closes.** Your DI finalizers close pools and clients.
-7. **Observability flushes** (spans, Sentry events, the metrics server thread), then
+7. **The application scope closes.** Your DI finalizers close pools and clients.
+8. **Observability flushes** (spans, Sentry events, the metrics server thread), then
    **`post_shutdown` hooks** run.
 
 Only entrypoints that were actually bound are drained and stopped, and a step that fails is
@@ -83,7 +92,7 @@ spec = AppSpec(
     service_name="orders",
     create_container=build_container,
     drain_delay_seconds=5.0,       # once, unready but still accepting
-    drain_grace_seconds=30.0,      # per entrypoint, for in-flight work
+    drain_grace_seconds=30.0,      # per entrypoint and step, for in-flight work
     cleanup_timeout_seconds=10.0,  # per post-drain step
 )
 ```
@@ -91,6 +100,7 @@ spec = AppSpec(
 | Step | Budget | On overrun |
 | --- | --- | --- |
 | Warmup (whole phase) | 60s, fixed | `WarmupTimeoutError`, startup aborts |
+| `serve()` returning after `stop` | `drain_grace_seconds` + 5s | cancelled, `DrainTimeoutError` |
 | `drain(grace)` | `drain_grace_seconds` + 5s | `DrainTimeoutError` |
 | `stop()` | `cleanup_timeout_seconds` | `CleanupTimeoutError` |
 | `pre_shutdown` hooks | `cleanup_timeout_seconds` | `CleanupTimeoutError` |
@@ -99,6 +109,11 @@ spec = AppSpec(
 
 The extra 5 seconds on the drain step exist so an entrypoint that honours its own grace window
 exactly is not killed a millisecond too early.
+
+The window is per step, and the steps run one after another: first the `serve()` tails (all at
+once), then each `drain()` in turn. A worker whose consumer is mid-batch spends its window in the
+first; an HTTP server with slow requests spends its window in the second. If one process holds
+both and both can be busy for the whole window, budget `drain_grace_seconds` for each.
 
 `drain_delay_seconds` is not a budget but a fixed wait, spent once between readiness going red and
 the first `drain()`, and only when the service had reached Ready. It costs the full amount on every
@@ -112,7 +127,8 @@ in the first place.
 
     Keep `terminationGracePeriodSeconds` larger than
     `drain_delay_seconds + drain_grace_seconds + cleanup_timeout_seconds`, otherwise the kubelet
-    sends `SIGKILL` in the middle of your drain. See [Kubernetes](../operations/kubernetes.md).
+    sends `SIGKILL` in the middle of your drain. Add another `drain_grace_seconds` for each
+    entrypoint that can be busy for its whole window at the same time as another. See [Kubernetes](../operations/kubernetes.md).
 
 ## Event loop
 
@@ -242,8 +258,8 @@ sequenceDiagram
     H->>E: serve(stop=...)
     Note over H,E: ... serving ...
     H->>H: SIGTERM → stop.set()
-    E-->>H: serve() returns (still accepting)
     H->>H: health.ready = False
+    E-->>H: serve() returns (still accepting)
     Note over H,E: drain_delay_seconds — still accepting
     H->>E: drain(grace)
     H->>E: stop()
