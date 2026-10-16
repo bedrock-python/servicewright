@@ -505,6 +505,14 @@ def _exc_router() -> APIRouter:
     async def http500() -> None:
         raise HTTPException(status_code=500, detail="boom")
 
+    @router.put("/http-412")
+    async def http412() -> None:
+        raise HTTPException(status_code=412, detail="stale ETag")
+
+    @router.post("/precondition")
+    async def precondition() -> None:
+        raise ServiceError("order 42 is not paid yet", code="order_not_paid", kind=ErrorKind.PRECONDITION_FAILED)
+
     @router.get("/unhandled")
     async def unhandled() -> None:
         raise RuntimeError("kaboom")
@@ -551,6 +559,20 @@ async def test__http_exception_handler__4xx__preserves_the_detail() -> None:
     body = resp.json()
     assert body["code"] == "http_error"
     assert body["detail"] == "not found"
+
+
+async def test__http_exception_handler__412_from_a_conditional_request__keeps_412() -> None:
+    resp = (await _exc_client()).put("/http-412")
+    assert resp.status_code == 412
+    assert resp.json()["detail"] == "stale ETag"
+
+
+async def test__service_error_handler__precondition_failed__answers_400_not_412() -> None:
+    resp = (await _exc_client()).post("/precondition")
+    assert resp.status_code == 400
+    body = resp.json()
+    assert body["status"] == 400
+    assert body["code"] == "order_not_paid"
 
 
 async def test__http_exception_handler__5xx__masks_it_to_a_generic_internal_error() -> None:

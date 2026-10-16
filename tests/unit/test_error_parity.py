@@ -38,6 +38,22 @@ pytestmark = pytest.mark.unit
 
 SECRET = "dsn=postgres://user:pw@db/ledger"
 
+# google.rpc.Code's HTTP mapping (google/rpc/code.proto): what grpc-gateway or
+# Envoy's transcoder answers in front of a gRPC service.
+HTTP_STATUS_BY_GRPC_STATUS = {
+    grpc.StatusCode.INVALID_ARGUMENT: 400,
+    grpc.StatusCode.UNAUTHENTICATED: 401,
+    grpc.StatusCode.PERMISSION_DENIED: 403,
+    grpc.StatusCode.NOT_FOUND: 404,
+    grpc.StatusCode.ALREADY_EXISTS: 409,
+    grpc.StatusCode.FAILED_PRECONDITION: 400,
+    grpc.StatusCode.RESOURCE_EXHAUSTED: 429,
+    grpc.StatusCode.DEADLINE_EXCEEDED: 504,
+    grpc.StatusCode.UNAVAILABLE: 503,
+    grpc.StatusCode.UNIMPLEMENTED: 501,
+    grpc.StatusCode.INTERNAL: 500,
+}
+
 
 class OrderNotFoundError(ServiceError):
     kind = ErrorKind.NOT_FOUND
@@ -64,7 +80,7 @@ Probe = Callable[[Exception], Awaitable[Conclusion]]
 
 
 def _kind_of(status: Any, table: Mapping[ErrorKind, Any]) -> ErrorKind:
-    """Reverse the transport's own mapping table; both are injective."""
+    """Reverse the transport's own mapping table (HTTP 400 reverses to ``INVALID``)."""
     return next(kind for kind, mapped in table.items() if mapped == status)
 
 
@@ -183,3 +199,8 @@ async def test__public_service_error__raised_over_either_transport__reaches_the_
     assert conclusion.kind is ErrorKind.NOT_FOUND
     assert conclusion.code == "order_not_found"
     assert conclusion.detail == "no order with id 42"
+
+
+@pytest.mark.parametrize("kind", list(ErrorKind))
+def test__error_kind__http_status__is_what_a_grpc_gateway_answers_for_its_grpc_status(kind: ErrorKind) -> None:
+    assert HTTP_STATUS_BY_KIND[kind] == HTTP_STATUS_BY_GRPC_STATUS[GRPC_STATUS_BY_KIND[kind]]

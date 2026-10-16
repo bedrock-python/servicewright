@@ -50,13 +50,19 @@ class ErrorKind(enum.StrEnum):
     INTERNAL = "internal"
 
 
+# Each status is the one google.rpc.Code assigns to the kind's gRPC status, so a
+# service answers the same over HTTP as grpc-gateway or Envoy's transcoder does
+# in front of its gRPC side. That makes PRECONDITION_FAILED (FAILED_PRECONDITION)
+# a 400 shared with INVALID, not 412: RFC 9110 keeps 412 for conditional request
+# headers (If-Match and friends), and clients treat it as a stale ETag. Clients
+# tell the two 400s apart by the error code, not the status.
 HTTP_STATUS_BY_KIND: dict[ErrorKind, int] = {
     ErrorKind.INVALID: 400,
     ErrorKind.UNAUTHENTICATED: 401,
     ErrorKind.FORBIDDEN: 403,
     ErrorKind.NOT_FOUND: 404,
     ErrorKind.CONFLICT: 409,
-    ErrorKind.PRECONDITION_FAILED: 412,
+    ErrorKind.PRECONDITION_FAILED: 400,
     ErrorKind.TOO_MANY_REQUESTS: 429,
     ErrorKind.DEADLINE_EXCEEDED: 504,
     ErrorKind.UNAVAILABLE: 503,
