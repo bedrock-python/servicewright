@@ -930,28 +930,39 @@ async def test__unhandled_error_interceptor__service_error__masks_it_too() -> No
     assert "user_missing" not in details
 
 
-@pytest.mark.parametrize(
-    "deliberate",
-    [
-        pytest.param(grpc.aio.AbortError("already aborted"), id="abort-error"),
-        pytest.param(grpc.RpcError("already failed"), id="rpc-error"),
-    ],
-)
-async def test__unhandled_error_interceptor__status_already_chosen__passes_it_through(
-    deliberate: Exception,
-) -> None:
+async def test__unhandled_error_interceptor__abort_error__passes_it_through() -> None:
     # Arrange
     from servicewright.adapters.grpc import UnhandledErrorInterceptor
 
     context = _AbortRecordingContext()
 
     # Act
-    with pytest.raises(type(deliberate)):
+    with pytest.raises(grpc.aio.AbortError):
         async with UnhandledErrorInterceptor().around(_make_call(context, "/pkg.Svc/Rpc")):
-            raise deliberate
+            raise grpc.aio.AbortError("already aborted")
 
     # Assert
     assert context.aborts == []
+
+
+async def test__unhandled_error_interceptor__rpc_error__masks_it() -> None:
+    # Arrange
+    import grpc as grpc_lib
+
+    from servicewright.adapters.grpc import ERROR_CODE_TRAILING_METADATA, UnhandledErrorInterceptor
+
+    context = _AbortRecordingContext()
+
+    # Act
+    with pytest.raises(_AbortedSentinelError):
+        async with UnhandledErrorInterceptor().around(_make_call(context, "/pkg.Svc/Rpc")):
+            raise grpc_lib.RpcError("downstream failure")
+
+    # Assert
+    (code, details, trailing) = context.aborts[0]
+    assert code == grpc_lib.StatusCode.INTERNAL
+    assert details == "internal_error"
+    assert trailing == ((ERROR_CODE_TRAILING_METADATA, "internal_error"),)
 
 
 async def test__unhandled_error_interceptor__caller_cancelled__passes_it_through() -> None:
