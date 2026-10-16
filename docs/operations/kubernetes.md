@@ -100,6 +100,10 @@ spec:
   terminationGracePeriodSeconds: 60   # 5 + 30 + 10 + slack
 ```
 
+`drain_grace_seconds` is a window per shutdown step: a consumer finishing its batch inside
+`serve()` uses one, an HTTP server finishing its requests in `drain()` uses another. If a pod runs
+both and both can be busy for the whole window, add `drain_grace_seconds` once more.
+
 !!! tip "Set `drain_delay_seconds` to your propagation lag"
 
     The usual `preStop: sleep 5` hack exists to keep a pod serving while endpoint removal

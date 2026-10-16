@@ -22,7 +22,7 @@ That is the whole contract. The Host never branches on what kind of entrypoint i
 | Method | Called | Contract |
 | --- | --- | --- |
 | `bind(ctx)` | once, before readiness | Allocate, subscribe, register. **Accept nothing yet.** Raise if the resource is unavailable — the Host aborts startup instead of reporting ready. |
-| `serve(stop=...)` | once, in a `TaskGroup` | Run until `stop` is set, then return **while still accepting**. Raise to report a fatal failure. |
+| `serve(stop=...)` | once, in a `TaskGroup` | Run until `stop` is set, then return **while still accepting**. A unit already in flight may finish first, within `drain_grace_seconds`; after that the Host cancels it. Raise to report a fatal failure. |
 | `drain(grace)` | on shutdown, reverse order | Stop intake. Let in-flight work finish within `grace` seconds. |
 | `stop()` | after drain, reverse order | Hard stop. Release everything. Must be safe to call after `drain`. |
 
@@ -31,8 +31,8 @@ stateDiagram-v2
     [*] --> Bound: bind(ctx) — allocate, accept nothing
     Bound --> Serving: serve(stop) — the Host flips readiness on
     Serving --> Serving: stop is not set
-    Serving --> Accepting: stop is set, serve() returns
-    Accepting --> Draining: readiness off, then drain(grace)
+    Serving --> Accepting: stop is set, readiness off, serve() returns
+    Accepting --> Draining: drain(grace)
     Draining --> Stopped: stop()
     Stopped --> [*]
 ```
