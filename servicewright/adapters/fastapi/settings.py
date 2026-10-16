@@ -257,7 +257,7 @@ class HttpServerSettings(BaseModel):
     )
     graceful_timeout: float = Field(
         default=DEFAULT_GRACEFUL_TIMEOUT_SECONDS,
-        description="Seconds uvicorn lets in-flight requests finish on shutdown; 0 waits indefinitely",
+        description="Cap on the Host's drain grace for in-flight requests; 0 sets no cap of its own",
     )
     title: str | None = Field(default=None, description="OpenAPI title; None falls back to AppSpec.service_name")
     openapi_url: str = Field(default=DEFAULT_OPENAPI_URL, description="Schema path")

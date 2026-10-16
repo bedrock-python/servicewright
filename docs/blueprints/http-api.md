@@ -224,7 +224,7 @@ def build_http(settings: Settings) -> FastApiEntrypoint:
     )
 ```
 
-`to_config()` is the whole mapping: host, port, the 10 s graceful timeout, the probe paths and
+`to_config()` is the whole mapping: host, port, the 30 s graceful timeout, the probe paths and
 whatever `SERVER__UVICORN__*` the deployment sets. `version` is the one thing it takes from you —
 the OpenAPI version is the application's.
 

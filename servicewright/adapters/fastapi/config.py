@@ -12,10 +12,14 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from ...core.constants import DEFAULT_DRAIN_GRACE_SECONDS
+
 # --- /system namespace defaults (mirror the prototype constants) ------------- #
 DEFAULT_HTTP_HOST = "0.0.0.0"
 DEFAULT_HTTP_PORT = 8000
-DEFAULT_GRACEFUL_TIMEOUT_SECONDS = 10.0
+# The Host's full drain allowance, as for gRPC's ``grace_period``: a lower
+# default would silently cut every request the documented grace covers.
+DEFAULT_GRACEFUL_TIMEOUT_SECONDS = DEFAULT_DRAIN_GRACE_SECONDS
 
 DEFAULT_OPENAPI_URL = "/system/openapi.json"
 DEFAULT_DOCS_URL = "/system/docs"
@@ -158,6 +162,13 @@ class HttpConfig:
     host: str = DEFAULT_HTTP_HOST
     port: int = DEFAULT_HTTP_PORT
     graceful_timeout: float = DEFAULT_GRACEFUL_TIMEOUT_SECONDS
+    """Seconds in-flight requests may finish in after intake stops, on drain.
+
+    The Host allots a grace when it calls ``drain(grace)``, and uvicorn cancels
+    whatever is still running when the shorter of the two expires, so the
+    effective budget is ``min(host_grace, graceful_timeout)``. ``0`` sets no cap
+    of its own and leaves the Host's grace in charge.
+    """
 
     # FastAPI app construction.
     title: str | None = None

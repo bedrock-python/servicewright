@@ -327,7 +327,7 @@ Entrypoint constructors, all keyword-only:
 * `FastApiEntrypoint(config=None, routers=(), routes_registerer=None, middlewares=None,
   exception_handlers=None, default_exception_handlers=True, error_renderer=None,
   metrics=False, configure_app=None, kind="http", essential=True)`. `HttpConfig` defaults:
-  `host="0.0.0.0"`, `port=8000`, `graceful_timeout=10.0`, probes at
+  `host="0.0.0.0"`, `port=8000`, `graceful_timeout=30.0`, probes at
   `/system/health/livez` and `/system/health/readyz`, docs at `/system/docs`,
   `redirect_slashes=False`. `MiddlewareConfig` defaults have unit scope, context, sentry,
   processing time, logging, correlation id, gzip and CORS all on.
@@ -471,8 +471,10 @@ Each `*Plugin` takes exactly the same arguments as its entrypoint and exposes `.
     `allow_ephemeral_port=True`: the sink has no bound-port readback, so an ephemeral
     exposition port is one nothing scrapes, and `METRICS__PORT=0` in a pod is a silent outage.
 20. **gRPC reflection and channelz are off by default and unauthenticated when on**, on the
-    same port as production traffic. The effective gRPC drain is
-    `min(host drain_grace_seconds, config.grace_period)`.
+    same port as production traffic. The effective drain of every server entrypoint is
+    `min(host drain_grace_seconds, its own cap)`: `GrpcConfig.grace_period` for gRPC,
+    `graceful_timeout` for FastAPI and Litestar (`0` there sets no cap). Both caps default to
+    30.0, the default grace; raising `drain_grace_seconds` above that needs the cap raised too.
 
 ## Common mistakes
 

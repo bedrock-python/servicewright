@@ -128,6 +128,8 @@ class _FakeUvicornConfig:
     def __init__(self, app: Any, **kwargs: Any) -> None:
         self.app = app
         self.kwargs = kwargs
+        # The one setting uvicorn reads at shutdown rather than at construction.
+        self.timeout_graceful_shutdown = kwargs.get("timeout_graceful_shutdown")
 
 
 @pytest.fixture
@@ -159,7 +161,7 @@ def test__http_config__default__uses_the_documented_values() -> None:
     config = HttpConfig()
     assert config.host == "0.0.0.0"
     assert config.port == 8000
-    assert config.graceful_timeout == 10.0
+    assert config.graceful_timeout == 30.0
     assert config.openapi_url == "/system/openapi.json"
     assert config.docs_url == "/system/docs"
     assert config.redoc_url == "/system/redoc"
@@ -971,6 +973,38 @@ async def test__fastapi_drain__called__asks_uvicorn_to_stop_accepting(patched_uv
     await ep.drain(1.0)
     assert patched_uvicorn["server"].should_exit is True
     assert ep._runner._stopped is True
+
+
+@pytest.mark.parametrize(
+    ("config", "grace", "expected"),
+    [
+        pytest.param(HttpConfig(port=0), 12.5, 13, id="default-config-follows-the-host-grace"),
+        pytest.param(HttpConfig(port=0, graceful_timeout=5.0), 12.5, 5, id="configured-timeout-shortens-it"),
+        pytest.param(HttpConfig(port=0, graceful_timeout=0), 12.5, 13, id="zero-sets-no-cap"),
+        pytest.param(HttpConfig(port=0, uvicorn_kwargs={"timeout_graceful_shutdown": 4}), 12.5, 4, id="uvicorn-kwarg"),
+        pytest.param(HttpConfig(port=0), 0.2, 1, id="sub-second-grace-rounds-up"),
+    ],
+)
+async def test__fastapi_drain__host_grace_given__uvicorn_cancels_requests_no_earlier_than_the_shorter_budget(
+    patched_uvicorn: dict[str, Any],
+    config: HttpConfig,
+    grace: float,
+    expected: int,
+) -> None:
+    ep = FastApiEntrypoint(config=config)
+    await ep.bind(_make_service_ctx(FakeContainer()))
+
+    stop = asyncio.Event()
+
+    async def drive() -> None:
+        while "server" not in patched_uvicorn or not patched_uvicorn["server"].serve_started:
+            await asyncio.sleep(0)
+        stop.set()
+
+    await asyncio.gather(ep.serve(stop=stop), drive())
+    await ep.drain(grace)
+
+    assert patched_uvicorn["server"].config.timeout_graceful_shutdown == expected
 
 
 async def test__fastapi_drain__called_before_serve__does_nothing() -> None:
