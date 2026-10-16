@@ -249,7 +249,7 @@ once per run inside the application scope and appended to `spec.warmers`.
 | Name | Signature | Notes |
 |---|---|---|
 | `ServiceError` | `ServiceError(detail=None, *, code=None, kind=None, params=None, public=None)` | subclass it and set `kind` / `code` / `public` as class attributes; `code` defaults to the snake_cased class name minus `Error` |
-| `ErrorKind` | `INVALID`, `UNAUTHENTICATED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `PRECONDITION_FAILED`, `TOO_MANY_REQUESTS`, `DEADLINE_EXCEEDED`, `UNAVAILABLE`, `NOT_IMPLEMENTED`, `INTERNAL` | 400/401/403/404/409/412/429/504/503/501/500 over HTTP |
+| `ErrorKind` | `INVALID`, `UNAUTHENTICATED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `PRECONDITION_FAILED`, `TOO_MANY_REQUESTS`, `DEADLINE_EXCEEDED`, `UNAVAILABLE`, `NOT_IMPLEMENTED`, `INTERNAL` | 400/401/403/404/409/400/429/504/503/501/500 over HTTP (each the `google.rpc.Code` mapping of the gRPC status) |
 | `ErrorInfo` | `kind`, `code`, `detail=None`, `params={}`, `public=True`, `status_override=None`, `headers=None`; `.http_status`; `ErrorInfo.from_service_error(exc)` | the normalized view every renderer takes |
 | `mask_private_error` | `mask_private_error(info) -> ErrorInfo` | `public=False` collapses to a generic `internal_error` 500 |
 | `INTERNAL_ERROR_CODE` | `"internal_error"` | the code every masked error renders as, on both transports |

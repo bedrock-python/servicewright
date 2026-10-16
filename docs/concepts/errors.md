@@ -60,23 +60,33 @@ except ServiceError as exc:
 | `FORBIDDEN` | 403 | `PERMISSION_DENIED` |
 | `NOT_FOUND` | 404 | `NOT_FOUND` |
 | `CONFLICT` | 409 | `ALREADY_EXISTS` |
-| `PRECONDITION_FAILED` | 412 | `FAILED_PRECONDITION` |
+| `PRECONDITION_FAILED` | 400 | `FAILED_PRECONDITION` |
 | `TOO_MANY_REQUESTS` | 429 | `RESOURCE_EXHAUSTED` |
 | `NOT_IMPLEMENTED` | 501 | `UNIMPLEMENTED` |
 | `UNAVAILABLE` | 503 | `UNAVAILABLE` |
 | `DEADLINE_EXCEEDED` | 504 | `DEADLINE_EXCEEDED` |
 | `INTERNAL` | 500 | `INTERNAL` |
 
-Both columns are injective, so a status maps back to exactly one kind — which is what lets a
-gateway translate between the two without guessing.
+The gRPC column is injective, so a gRPC status maps back to exactly one kind. The HTTP column
+follows from it: every HTTP status is the one `google.rpc.Code` assigns to that gRPC status, so a
+client gets the same answer from the HTTP side as from grpc-gateway or Envoy's transcoder in front
+of the gRPC side.
 
-One row is worth stating out loud, because it has a plausible-looking alternative: `CONFLICT`
-renders as `ALREADY_EXISTS` and not as `ABORTED`, although both mean 409 to a gRPC gateway.
-`ABORTED` is the transaction-conflict code, and the gRPC contract tells clients to retry it at a
-higher level — the wrong advice for "this order was already paid", which will never succeed on a
-retry. `FAILED_PRECONDITION` is spoken for by `PRECONDITION_FAILED`. A client that has to tell a
-duplicate key from a state conflict branches on `x-error-code`, which carries the exact code
-either way, rather than on the status.
+Two rows are worth stating out loud, because each has a plausible-looking alternative.
+
+`CONFLICT` renders as `ALREADY_EXISTS` and not as `ABORTED`, although both mean 409 to a gRPC
+gateway. `ABORTED` is the transaction-conflict code, and the gRPC contract tells clients to retry
+it at a higher level — the wrong advice for "this order was already paid", which will never
+succeed on a retry. `FAILED_PRECONDITION` is spoken for by `PRECONDITION_FAILED`.
+
+`PRECONDITION_FAILED` renders as 400 and not as 412. RFC 9110 reserves 412 for conditional
+request headers (`If-Match`, `If-Unmodified-Since`) evaluating to false, and clients, proxies and
+SDKs read it as "your copy is stale: refetch and retry", the wrong advice for "this order is not
+paid yet". A conditional request your own code rejects with `HTTPException(412)` still answers 412.
+
+So 400 means either `INVALID` or `PRECONDITION_FAILED`, and 409 is either a duplicate key or a
+state conflict. A client that has to tell them apart branches on the error code (`code` in the
+problem document, `x-error-code` over gRPC), which is exact either way, rather than on the status.
 
 ## What the client sees
 
@@ -182,6 +192,25 @@ from servicewright import ProblemDetailsRenderer
 
 FastApiEntrypoint(error_renderer=ProblemDetailsRenderer(type_base="https://errors.example.com"))
 # → "type": "https://errors.example.com/order_not_found"
+```
+
+A renderer can also move one kind to another status. Clients written when `PRECONDITION_FAILED`
+answered 412 can keep getting 412 while they migrate:
+
+```python
+import dataclasses
+
+from servicewright import ErrorInfo, ErrorKind, ProblemDetailsRenderer, RenderedError
+
+
+class Precondition412Renderer(ProblemDetailsRenderer):
+    def render(self, info: ErrorInfo) -> RenderedError:
+        if info.kind is ErrorKind.PRECONDITION_FAILED and info.status_override is None:
+            info = dataclasses.replace(info, status_override=412)
+        return super().render(info)
+
+
+FastApiEntrypoint(error_renderer=Precondition412Renderer())
 ```
 
 ### Rendering never fails
