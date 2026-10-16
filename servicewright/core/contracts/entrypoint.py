@@ -41,6 +41,10 @@ class Entrypoint(Protocol):
         :meth:`stop`. Closing listeners here instead would make ``drain(grace)``
         inert and would take the readiness endpoint down before the router knows.
 
+        Work already in progress when ``stop`` is set may finish first, within
+        ``drain_grace_seconds`` (plus 5 s): the Host cancels a ``serve()`` that
+        has not returned by then and reports a ``DrainTimeoutError``.
+
         Raise to report a fatal serve-time failure.
         """
         ...

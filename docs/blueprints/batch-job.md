@@ -147,9 +147,10 @@ async def backfill(scope: UnitScopeProtocol) -> None:
         cursor = await use_case.save_checkpoint(batch.last_id)
 ```
 
-On `SIGTERM` the Host cancels `serve()` at the next await point, and the last saved checkpoint
-means the retry resumes instead of restarting. Give the Job a
-`terminationGracePeriodSeconds` large enough for one batch to finish.
+On `SIGTERM` the function gets `drain_grace_seconds` (plus 5 seconds) to finish; after that the
+Host cancels `serve()` at the next await point, and the last saved checkpoint means the retry
+resumes instead of restarting. Size `drain_grace_seconds` for one batch, and the Job's
+`terminationGracePeriodSeconds` above it.
 
 ## `Job` + `CronJob`, or a scheduler entrypoint?
 

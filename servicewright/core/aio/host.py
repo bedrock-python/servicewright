@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from ..constants import DEFAULT_DRAIN_TIMEOUT_BUFFER_SECONDS
 from ..exceptions import CleanupTimeoutError, DrainTimeoutError, ServiceWrightError
@@ -48,6 +48,7 @@ class Host[TSettings: "BaseServiceSettingsProtocol", TContainer: "DependencyCont
         self.spec = spec
         self._entrypoints: list[Entrypoint] = []
         self._bound: list[Entrypoint] = []
+        self._was_ready = False
 
     def add_entrypoint(self, entrypoint: Entrypoint) -> None:
         """Append an entrypoint (typically from a plugin's ``on_register``)."""
@@ -87,6 +88,7 @@ class Host[TSettings: "BaseServiceSettingsProtocol", TContainer: "DependencyCont
         """
         self._entrypoints = list(entrypoints)
         self._bound = []
+        self._was_ready = False
         for plugin in plugins:
             plugin.on_register(self.spec, self)
 
@@ -150,9 +152,9 @@ class Host[TSettings: "BaseServiceSettingsProtocol", TContainer: "DependencyCont
             timeouts: list[ServiceWrightError] = []
             try:
                 if await self._startup(service_ctx, self._entrypoints, stop):
-                    await self._serve(self._entrypoints, stop)
+                    timeouts = await self._serve(self._entrypoints, stop)
             finally:
-                timeouts = await self._shutdown_in_scope(service_ctx)
+                timeouts += await self._shutdown_in_scope(service_ctx)
 
             if timeouts:
                 raise timeouts[0]
@@ -237,11 +239,16 @@ class Host[TSettings: "BaseServiceSettingsProtocol", TContainer: "DependencyCont
             extra={"service": self.spec.service_name},
         )
 
-    async def _serve(self, entrypoints: Sequence[Entrypoint], stop: asyncio.Event) -> None:
-        """Serve every entrypoint until ``stop``; re-raise an essential failure."""
+    async def _serve(self, entrypoints: Sequence[Entrypoint], stop: asyncio.Event) -> list[ServiceWrightError]:
+        """Serve every entrypoint until ``stop``; re-raise an essential failure.
+
+        Returns:
+            One :class:`DrainTimeoutError` per ``serve()`` that had to be
+            cancelled because it outran the drain budget after ``stop``.
+        """
         if not entrypoints:
             await stop.wait()
-            return
+            return []
 
         async def runner(entrypoint: Entrypoint) -> None:
             try:
@@ -265,10 +272,11 @@ class Host[TSettings: "BaseServiceSettingsProtocol", TContainer: "DependencyCont
                 stop.set()
 
         failure: BaseException | None = None
+        timeouts: list[ServiceWrightError] = []
         try:
             async with asyncio.TaskGroup() as group:
-                for entrypoint in entrypoints:
-                    group.create_task(runner(entrypoint))
+                tasks = {group.create_task(runner(entrypoint)): entrypoint for entrypoint in entrypoints}
+                timeouts = await self._bound_serve_tail(tasks, stop)
         except* Exception as eg:
             logger.exception(
                 "Serve loop aborted by entrypoint failure",
@@ -281,6 +289,51 @@ class Host[TSettings: "BaseServiceSettingsProtocol", TContainer: "DependencyCont
         # may not exit 0, or every exit-code-based supervisor reads it as success.
         if failure is not None:
             raise failure
+        return timeouts
+
+    async def _bound_serve_tail(
+        self,
+        tasks: dict[asyncio.Task[None], Entrypoint],
+        stop: asyncio.Event,
+    ) -> list[ServiceWrightError]:
+        """Wait for ``stop``, then give the ``serve()`` calls still running the drain budget.
+
+        A scoped entrypoint finishes its in-flight unit inside ``serve()``, so
+        this is where ``drain_grace_seconds`` has to hold for it. Readiness is
+        withdrawn as soon as ``stop`` is set: nothing has stopped accepting yet,
+        and nothing should be routed to a process that is shutting down.
+        """
+        stopping = asyncio.ensure_future(stop.wait())
+        serving = asyncio.gather(*tasks, return_exceptions=True)
+        waiters: set[asyncio.Future[Any]] = {stopping, serving}
+        try:
+            await asyncio.wait(waiters, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            stopping.cancel()
+        if not stop.is_set():
+            return []  # Every serve() returned on its own.
+
+        self._withdraw_readiness()
+        budget = self.spec.drain_grace_seconds + DEFAULT_DRAIN_TIMEOUT_BUFFER_SECONDS
+        _, overrun = await asyncio.wait(tasks, timeout=budget)
+        timeouts: list[ServiceWrightError] = []
+        for task in overrun:
+            task.cancel()
+            kind = tasks[task].kind
+            timeout_error = DrainTimeoutError(f"serve did not return within {budget}s of stop")
+            logger.warning(
+                "Shutdown step timed out",
+                extra={"service": self.spec.service_name, "phase": "serve", "kind": kind, "budget": budget},
+                exc_info=timeout_error,
+            )
+            timeouts.append(timeout_error)
+        return timeouts
+
+    def _withdraw_readiness(self) -> None:
+        """Flip readiness off, remembering whether the service had been routed to."""
+        if self.spec.health.ready:
+            self.spec.health.ready = False
+            self._was_ready = True
 
     async def _shutdown_in_scope(
         self,
@@ -288,15 +341,14 @@ class Host[TSettings: "BaseServiceSettingsProtocol", TContainer: "DependencyCont
     ) -> list[ServiceWrightError]:
         """Withdraw readiness, drain, stop and run pre-shutdown hooks; return any budget overruns."""
         # Stop routing first (k8s/LB) before we stop accepting work...
-        was_ready = self.spec.health.ready
-        self.spec.health.ready = False
+        self._withdraw_readiness()
 
         # ...and keep accepting while the routing layer catches up: readiness
         # going red reaches the load balancer asynchronously, and nothing closes
         # a listener until the first drain() below. A service that never reached
         # Ready was never routed to, so it has nothing to wait for.
         delay = self.spec.drain_delay_seconds
-        if was_ready and delay > 0:
+        if self._was_ready and delay > 0:
             logger.info(
                 "Readiness withdrawn; holding intake open before drain",
                 extra={"service": self.spec.service_name, "delay": delay},
