@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.2](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.13.1...servicewright-v0.13.2) (2026-10-16)
+
+
+### Bug Fixes
+
+* **grpc:** mask a failed outbound RPC instead of re-raising it ([#86](https://github.com/bedrock-python/servicewright/issues/86)) ([2b456d3](https://github.com/bedrock-python/servicewright/commit/2b456d3f7509d118e82ffd1df25ee105bd313f01))
+
 ## [0.13.1](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.13.0...servicewright-v0.13.1) (2026-09-15)
 
 
