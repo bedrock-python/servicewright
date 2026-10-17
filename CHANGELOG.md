@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.15.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.14.0...servicewright-v0.15.0) (2026-10-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* a ServiceError with kind=ErrorKind.PRECONDITION_FAILED now answers HTTP 400 instead of 412 (gRPC stays FAILED_PRECONDITION). Clients that branch on 412 should branch on the error code in the problem document. To keep 412 while they migrate, pass a renderer that sets status_override=412 for that kind; the errors page has a five-line example.
+* `MetricsSettings(port=0)` now raises `ValidationError`; pass `allow_ephemeral_port=True` (or `METRICS__ALLOW_EPHEMERAL_PORT=true`) to bind an ephemeral exposition port on purpose.
+* MetricsSink.gauge() is abstract — a third-party metrics backend must implement it (set / inc / dec) or fail at construction.
+
+### Features
+
+* add Masker seam with ValueRedactor, ChainRedactor, per-surface redactors and span-attribute redaction ([47e40e8](https://github.com/bedrock-python/servicewright/commit/47e40e8699ce64cc2565589e9cf82d55efad065b))
+* add run_sync() with event loop selection and a uvloop extra ([#20](https://github.com/bedrock-python/servicewright/issues/20)) ([c070211](https://github.com/bedrock-python/servicewright/commit/c070211940d4c0ce057daf3f303233c1b0ca509b)), closes [#19](https://github.com/bedrock-python/servicewright/issues/19)
+* AppSpec.drain_delay_seconds keeps the listeners open after readiness goes red ([#47](https://github.com/bedrock-python/servicewright/issues/47)) ([42c46c4](https://github.com/bedrock-python/servicewright/commit/42c46c47f8391a6ffc12fc3eb16d6dd0f0991c8e)), closes [#46](https://github.com/bedrock-python/servicewright/issues/46)
+* **fastapi:** pass instrumentations through to Instrumentator.add() ([#29](https://github.com/bedrock-python/servicewright/issues/29)) ([1b48f25](https://github.com/bedrock-python/servicewright/commit/1b48f257210752bf29d4c2a769eea31beb1713d8)), closes [#28](https://github.com/bedrock-python/servicewright/issues/28)
+* GrpcConfig.from_settings builds the config from a grpc-server-kit settings object ([599021b](https://github.com/bedrock-python/servicewright/commit/599021b7bc17cd081ad5b4c1f5d1ad6097b44a4f)), closes [#58](https://github.com/bedrock-python/servicewright/issues/58)
+* HttpServerSettings builds the FastAPI entrypoint's config from environment settings ([9c3e23e](https://github.com/bedrock-python/servicewright/commit/9c3e23ef5771e28d7427eba49a2f0027d9730c0b)), closes [#61](https://github.com/bedrock-python/servicewright/issues/61)
+* initial release of servicewright ([005b9b6](https://github.com/bedrock-python/servicewright/commit/005b9b6064216d0f2393e7682a193f238758daef))
+* let the framework's DI integration own the HTTP request scope ([#5](https://github.com/bedrock-python/servicewright/issues/5)) ([2674140](https://github.com/bedrock-python/servicewright/commit/2674140080b31538ccdf8d3b8aeee2b8455d273f)), closes [#4](https://github.com/bedrock-python/servicewright/issues/4)
+* MetricsSettings rejects port=0 unless allow_ephemeral_port=True ([7d51a43](https://github.com/bedrock-python/servicewright/commit/7d51a43cedf374934fe315bf7f118d19c9c97ac7))
+* **observability:** let KeyRedactor exempt exact field names with safe_keys ([#14](https://github.com/bedrock-python/servicewright/issues/14)) ([a1b7ecf](https://github.com/bedrock-python/servicewright/commit/a1b7ecf9dc059d1eb6da0eb6d747c1755a0959c1)), closes [#11](https://github.com/bedrock-python/servicewright/issues/11)
+* **observability:** make the concrete sinks importable from servicewright.adapters.observability ([#17](https://github.com/bedrock-python/servicewright/issues/17)) ([0a04252](https://github.com/bedrock-python/servicewright/commit/0a04252938654f14dbfc451525c460a628845f14)), closes [#16](https://github.com/bedrock-python/servicewright/issues/16)
+* **observability:** pass sentry_sdk.init options through SentryErrorTrackingSink ([#12](https://github.com/bedrock-python/servicewright/issues/12)) ([b434a21](https://github.com/bedrock-python/servicewright/commit/b434a212296cfa01a5f62be99e2a92f6355ca647)), closes [#9](https://github.com/bedrock-python/servicewright/issues/9)
+* record scheduled-job runs and add a gauge instrument to the metrics seam ([#26](https://github.com/bedrock-python/servicewright/issues/26)) ([92d45cf](https://github.com/bedrock-python/servicewright/commit/92d45cfdbd2501602fb35978d18c42059e5bea83)), closes [#25](https://github.com/bedrock-python/servicewright/issues/25)
+* ship the settings contract as pydantic-settings models ([#23](https://github.com/bedrock-python/servicewright/issues/23)) ([55a62db](https://github.com/bedrock-python/servicewright/commit/55a62db8f99de796135407c40dcd1eb21933aead))
+
+
+### Bug Fixes
+
+* an unhandled exception over gRPC is masked instead of sent as UNKNOWN plus its repr ([#52](https://github.com/bedrock-python/servicewright/issues/52)) ([85218f1](https://github.com/bedrock-python/servicewright/commit/85218f1847b3c5031ce61c34ff6e1a7fd459b7c0))
+* **core:** make the observability section protocols read-only so narrowed settings satisfy them ([#13](https://github.com/bedrock-python/servicewright/issues/13)) ([ebc2c05](https://github.com/bedrock-python/servicewright/commit/ebc2c0528894ea550245ea88ad8726c39b751627)), closes [#8](https://github.com/bedrock-python/servicewright/issues/8)
+* drain_grace_seconds bounds a serve() that is still running after stop ([#91](https://github.com/bedrock-python/servicewright/issues/91)) ([b861756](https://github.com/bedrock-python/servicewright/commit/b86175676eba12ce47487bc392f6a4694ec498b2)), closes [#88](https://github.com/bedrock-python/servicewright/issues/88)
+* ErrorKind.PRECONDITION_FAILED renders as HTTP 400, not 412 ([#94](https://github.com/bedrock-python/servicewright/issues/94)) ([abd565f](https://github.com/bedrock-python/servicewright/commit/abd565f522be8376068ba1b13cb895c0040f910f))
+* four defects the agents page turned up ([#44](https://github.com/bedrock-python/servicewright/issues/44)) ([dc08d1f](https://github.com/bedrock-python/servicewright/commit/dc08d1fea585b66e79e021dcf57c103a32646c09))
+* **grpc:** mask a failed outbound RPC instead of re-raising it ([#86](https://github.com/bedrock-python/servicewright/issues/86)) ([2b456d3](https://github.com/bedrock-python/servicewright/commit/2b456d3f7509d118e82ffd1df25ee105bd313f01))
+* importing the FastAPI adapter without its extra names the extra, not starlette ([#54](https://github.com/bedrock-python/servicewright/issues/54)) ([af1e0e1](https://github.com/bedrock-python/servicewright/commit/af1e0e1ae10f90b7d777a78cec35f66884143943))
+* **observability:** keep stdlib extra fields in the structlog sink ([#10](https://github.com/bedrock-python/servicewright/issues/10)) ([ae85ffb](https://github.com/bedrock-python/servicewright/commit/ae85ffbea19758c5c6af49484b45d25e8fb52897))
+* servicewright[grpc] accepts grpc-server-kit 0.2 ([5cb4e8d](https://github.com/bedrock-python/servicewright/commit/5cb4e8dd65170993decdef765c2fb8d8f7642114)), closes [#66](https://github.com/bedrock-python/servicewright/issues/66)
+
 ## [0.14.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.13.2...servicewright-v0.14.0) (2026-10-16)
 
 
