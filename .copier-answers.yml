@@ -1,0 +1,13 @@
+# Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
+_commit: d9d0a6f
+_src_path: gh:bedrock-python/python-library-template
+author_email: shalaevad.alexey@gmail.com
+author_name: Alexey Shalaev
+github_org: bedrock-python
+initial_version: 0.0.0
+package_name: servicewright
+project_description: 'Batteries-optional microservice runtime: lifecycle, observability,
+    warmup and gRPC/FastAPI transport entities to build services fast'
+project_name: servicewright
+project_slug: servicewright
+python_min_version: '3.12'
