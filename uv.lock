@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -70,7 +70,7 @@ version = "4.14.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "idna" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-13-servicewright-all' and extra == 'extra-13-servicewright-apscheduler3') or (extra == 'extra-13-servicewright-apscheduler3' and extra == 'extra-13-servicewright-apscheduler4')" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/61/cc/a381afa6efea9f496eff839d4a6a1aed3bfafc7b3ab4b0d1b243a12573dd/anyio-4.14.2.tar.gz", hash = "sha256:cfa139f3ed1a23ee8f88a145ddb5ac7605b8bbfd8592baacd7ce3d8bb4313c7f", size = 260176, upload-time = "2026-07-12T20:29:07.082Z" }
 wheels = [
@@ -361,7 +361,7 @@ name = "click"
 version = "8.4.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-13-servicewright-all' and extra == 'extra-13-servicewright-apscheduler3') or (extra == 'extra-13-servicewright-apscheduler3' and extra == 'extra-13-servicewright-apscheduler4')" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/9b/98/518d8e5081007684232226f475082b30087d0f585e8457db087298259f49/click-8.4.1.tar.gz", hash = "sha256:918b5633eddf6b41c32d4f454bf0de810065c74e3f7dbf8ee5452f8be88d3e96", size = 353007, upload-time = "2026-05-22T04:08:37.769Z" }
 wheels = [
@@ -502,7 +502,7 @@ name = "faker"
 version = "40.23.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "tzdata", marker = "sys_platform == 'win32' or (extra == 'extra-13-servicewright-all' and extra == 'extra-13-servicewright-apscheduler3') or (extra == 'extra-13-servicewright-apscheduler3' and extra == 'extra-13-servicewright-apscheduler4')" },
+    { name = "tzdata", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/f3/d6/fc071e5754815d9058e12ab549cc88e90f8f4ecf4dc33b6b750cdf4b622d/faker-40.23.0.tar.gz", hash = "sha256:f135e563f1f95f19346bb680bc2e43570bc43b7893e566023746f51f32c69dfc", size = 1972975, upload-time = "2026-06-10T20:53:21.611Z" }
 wheels = [
@@ -511,7 +511,7 @@ wheels = [
 
 [[package]]
 name = "fastapi"
-version = "0.143.2"
+version = "0.161.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-doc" },
@@ -521,9 +521,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "typing-inspection" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/19/f5/4bbb2df9bb6f365151f2c02795ca3f17f78d08e670a394df963f3d8881ce/fastapi-0.143.2.tar.gz", hash = "sha256:e9e6d97018dcfd748da7d9e7c61cedefbe9eb91b1a3288e45b13fbae76df2d54", size = 468920, upload-time = "2026-10-15T13:34:21.679Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ed/3d/2cc1a0dbc2dac6e157b4ef12bac063e1016cb7c6d7395f76665e439cf1aa/fastapi-0.161.1.tar.gz", hash = "sha256:4076b88434452e20289379068e976c4a04c65ffc8e6be31510106e150a422f0f", size = 527406, upload-time = "2026-10-22T22:22:07.757Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d5/5a/9a5fd06659a63e13e876dd660347c044b3954ede3db928c69df879fac02c/fastapi-0.143.2-py3-none-any.whl", hash = "sha256:da2fe9893b7392ebce76d8c8511e3fa43e5a25f5852103aa2eee7cff3ab80b75", size = 144690, upload-time = "2026-10-15T13:34:19.861Z" },
+    { url = "https://files.pythonhosted.org/packages/45/2a/101012d82931d9de3855384e1667e49c0e07a0048e3868f9fec1697293a9/fastapi-0.161.1-py3-none-any.whl", hash = "sha256:a1363080cf9aeedecd99f4e1a23669d7e77542227f6536f4d7bbd59f07ecaa94", size = 149049, upload-time = "2026-10-22T22:22:06.139Z" },
 ]
 
 [[package]]
@@ -1199,7 +1199,7 @@ version = "1.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-13-servicewright-all' and extra == 'extra-13-servicewright-apscheduler3') or (extra == 'extra-13-servicewright-apscheduler3' and extra == 'extra-13-servicewright-apscheduler4')" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
     { name = "ghp-import" },
     { name = "jinja2" },
     { name = "markdown" },
@@ -1469,7 +1469,7 @@ version = "2.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "ast-serialize" },
-    { name = "librt", marker = "platform_python_implementation != 'PyPy' or (extra == 'extra-13-servicewright-all' and extra == 'extra-13-servicewright-apscheduler3') or (extra == 'extra-13-servicewright-apscheduler3' and extra == 'extra-13-servicewright-apscheduler4')" },
+    { name = "librt", marker = "platform_python_implementation != 'PyPy'" },
     { name = "mypy-extensions" },
     { name = "pathspec" },
     { name = "typing-extensions" },
@@ -1969,7 +1969,7 @@ name = "pytest"
 version = "9.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-13-servicewright-all' and extra == 'extra-13-servicewright-apscheduler3') or (extra == 'extra-13-servicewright-apscheduler3' and extra == 'extra-13-servicewright-apscheduler4')" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
     { name = "iniconfig" },
     { name = "packaging" },
     { name = "pluggy" },
@@ -1986,7 +1986,7 @@ version = "1.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pytest" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-13-servicewright-all' and extra == 'extra-13-servicewright-apscheduler3') or (extra == 'extra-13-servicewright-apscheduler3' and extra == 'extra-13-servicewright-apscheduler4')" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/43/7c/d36d04db312ecf4298932ef77e6e4a9e8ad017906e24e34f0b0c361a2473/pytest_asyncio-1.4.0.tar.gz", hash = "sha256:c6c0d2259945122819f171a32ecea2c349ead889ee28176caaf492143424be42", size = 58514, upload-time = "2026-05-26T09:56:04.083Z" }
 wheels = [
@@ -2153,7 +2153,7 @@ version = "1.9.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-13-servicewright-all' and extra == 'extra-13-servicewright-apscheduler3') or (extra == 'extra-13-servicewright-apscheduler3' and extra == 'extra-13-servicewright-apscheduler4')" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
     { name = "rich" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/f7/ea/21e4867ea0ef881ffd4c0550fc21a061435e50d6324bcd034396633cbc18/rich_click-1.9.8.tar.gz", hash = "sha256:4008f921da88b5d91646c134ec881c1500e5a6b3f093e90e8f29400e09608371", size = 75363, upload-time = "2026-05-28T19:54:59.144Z" }
@@ -2211,7 +2211,7 @@ all = [
     { name = "deadline-budget" },
     { name = "dishka" },
     { name = "fastapi" },
-    { name = "grpc-server-kit", extra = ["channelz", "health", "reflection"], marker = "extra == 'extra-13-servicewright-all' or extra != 'extra-13-servicewright-apscheduler3' or (extra == 'extra-13-servicewright-apscheduler3' and extra == 'extra-13-servicewright-apscheduler4')" },
+    { name = "grpc-server-kit", extra = ["channelz", "health", "reflection"], marker = "extra == 'extra-13-servicewright-all' or extra != 'extra-13-servicewright-apscheduler3' or extra == 'extra-13-servicewright-apscheduler4'" },
     { name = "litestar" },
     { name = "opentelemetry-exporter-otlp-proto-grpc" },
     { name = "opentelemetry-instrumentation-fastapi" },
@@ -2221,9 +2221,9 @@ all = [
     { name = "pydantic-settings" },
     { name = "redis" },
     { name = "sentry-sdk" },
-    { name = "sqlalchemy", extra = ["asyncio"], marker = "extra == 'extra-13-servicewright-all' or extra != 'extra-13-servicewright-apscheduler3' or (extra == 'extra-13-servicewright-apscheduler3' and extra == 'extra-13-servicewright-apscheduler4')" },
+    { name = "sqlalchemy", extra = ["asyncio"], marker = "extra == 'extra-13-servicewright-all' or extra != 'extra-13-servicewright-apscheduler3' or extra == 'extra-13-servicewright-apscheduler4'" },
     { name = "structlog" },
-    { name = "uvicorn", extra = ["standard"], marker = "extra == 'extra-13-servicewright-all' or extra != 'extra-13-servicewright-apscheduler3' or (extra == 'extra-13-servicewright-apscheduler3' and extra == 'extra-13-servicewright-apscheduler4')" },
+    { name = "uvicorn", extra = ["standard"], marker = "extra == 'extra-13-servicewright-all' or extra != 'extra-13-servicewright-apscheduler3' or extra == 'extra-13-servicewright-apscheduler4'" },
     { name = "uvloop" },
 ]
 apscheduler3 = [
@@ -2448,7 +2448,7 @@ name = "sqlalchemy"
 version = "2.0.51"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "greenlet", marker = "platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64' or (extra == 'extra-13-servicewright-all' and extra == 'extra-13-servicewright-apscheduler3') or (extra == 'extra-13-servicewright-apscheduler3' and extra == 'extra-13-servicewright-apscheduler4')" },
+    { name = "greenlet", marker = "platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64'" },
     { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/02/f1/a7a892f18d4d224e6b26f706531eafccc41e37594d37d304786969ee13cb/sqlalchemy-2.0.51.tar.gz", hash = "sha256:804dccd8a4a6242c4e30ad961e540e18a588f6527202f2d6791b01845d59fdc9", size = 9912201, upload-time = "2026-06-15T15:41:20.012Z" }
@@ -2495,7 +2495,7 @@ version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-13-servicewright-all' and extra == 'extra-13-servicewright-apscheduler3') or (extra == 'extra-13-servicewright-apscheduler3' and extra == 'extra-13-servicewright-apscheduler4')" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/b5/b4/205b0d5241d934e8add0c38aa924c4f9fb7330834ff11e5444db964ec3f9/starlette-1.6.0.tar.gz", hash = "sha256:d4e3ac5e546444960c710297a3c9fc3f7ebae1b7e963f3d36173b49da535be9b", size = 2716969, upload-time = "2026-08-08T18:27:57.512Z" }
 wheels = [
@@ -2631,11 +2631,11 @@ wheels = [
 
 [package.optional-dependencies]
 standard = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-13-servicewright-all' and extra == 'extra-13-servicewright-apscheduler3') or (extra == 'extra-13-servicewright-apscheduler3' and extra == 'extra-13-servicewright-apscheduler4')" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
     { name = "httptools" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
-    { name = "uvloop", marker = "(platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32') or (platform_python_implementation == 'PyPy' and extra == 'extra-13-servicewright-all' and extra == 'extra-13-servicewright-apscheduler3') or (platform_python_implementation == 'PyPy' and extra == 'extra-13-servicewright-apscheduler3' and extra == 'extra-13-servicewright-apscheduler4') or (sys_platform == 'cygwin' and extra == 'extra-13-servicewright-all' and extra == 'extra-13-servicewright-apscheduler3') or (sys_platform == 'cygwin' and extra == 'extra-13-servicewright-apscheduler3' and extra == 'extra-13-servicewright-apscheduler4') or (sys_platform == 'win32' and extra == 'extra-13-servicewright-all' and extra == 'extra-13-servicewright-apscheduler3') or (sys_platform == 'win32' and extra == 'extra-13-servicewright-apscheduler3' and extra == 'extra-13-servicewright-apscheduler4')" },
+    { name = "uvloop", marker = "platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32'" },
     { name = "watchfiles" },
     { name = "websockets" },
 ]
