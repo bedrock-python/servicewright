@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import signal
 import sys
+import threading
+import time
 from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
 
@@ -202,6 +204,38 @@ async def test__install_signal_handlers__loop_registration_unavailable__falls_ba
 
     # Assert
     assert fallback.called
+
+
+@pytest.mark.skipif(IS_WINDOWS, reason="the loop-handler path is POSIX-only")
+async def test__install_signal_handlers__fallback_signal_while_the_loop_is_idle__wakes_the_loop(
+    stop: asyncio.Event,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A ``signal.signal`` handler runs between the selector's retries, so setting the
+    event there only queues its waiter; nothing wakes the selector until its timeout."""
+    # Arrange
+    loop = asyncio.get_running_loop()
+
+    def unavailable(*_args: object, **_kwargs: object) -> None:
+        raise NotImplementedError("no loop handlers here")
+
+    monkeypatch.setattr(loop, "add_signal_handler", unavailable)
+    uninstall = install_signal_handlers(stop)
+    main_thread = threading.get_ident()
+    sender = threading.Timer(0.2, signal.pthread_kill, (main_thread, signal.SIGTERM))
+
+    # Act
+    started = time.monotonic()
+    sender.start()
+    try:
+        await asyncio.wait_for(stop.wait(), timeout=3.0)
+    finally:
+        sender.join()
+        uninstall()
+    elapsed = time.monotonic() - started
+
+    # Assert
+    assert elapsed < 1.0
 
 
 async def test__install_signal_handlers__registration_always_fails__does_not_raise(
