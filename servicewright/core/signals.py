@@ -45,7 +45,8 @@ def install_signal_handlers(stop_event: asyncio.Event) -> Callable[[], None]:
     Installing is best-effort: a failure to register is swallowed so the process
     still runs where signal handling is unavailable (e.g. a non-main thread). On
     Unix the asyncio loop handler is preferred with a ``signal.signal`` fallback;
-    on Windows ``signal.signal`` schedules the event onto the loop thread-safely.
+    on Windows and on that fallback, ``signal.signal`` schedules the event onto the
+    loop thread-safely, so an idle loop wakes up at once.
 
     Args:
         stop_event: Event that is set when the first shutdown signal arrives.
@@ -73,36 +74,30 @@ def install_signal_handlers(stop_event: asyncio.Event) -> Callable[[], None]:
         logger.info("Shutdown signal received", extra={"signal": signum})
         stop_event.set()
 
-    def install_fallback(sig: signal.Signals) -> None:
-        """Register through the stdlib ``signal`` module and record the restore."""
-
-        def handler(signum: int, _frame: FrameType | None) -> None:
+    def module_handler(signum: int, _frame: FrameType | None) -> None:
+        # A ``signal.signal`` handler runs outside the loop's callbacks: setting the
+        # event here would only queue its waiters, and an idle loop would not see them
+        # until its selector timed out. ``call_soon_threadsafe`` wakes the loop. The
+        # escalation path must not go through the loop: the reason for a second signal
+        # is usually that the loop is no longer making progress.
+        if signalled:
             request_stop(signum)
-
-        _register(sig, handler, removers)
+            return
+        with contextlib.suppress(RuntimeError, ValueError):
+            if not loop.is_closed():
+                loop.call_soon_threadsafe(request_stop, signum)
 
     if sys.platform != "win32":
         for sig in _HANDLED_SIGNALS:
             try:
                 loop.add_signal_handler(sig, partial(request_stop, int(sig)))
             except (RuntimeError, ValueError, NotImplementedError):
-                install_fallback(sig)
+                _register(sig, module_handler, removers)
             else:
                 removers.append(partial(_remove_loop_handler, loop, sig))
     else:
-
-        def win_handler(signum: int, _frame: FrameType | None) -> None:
-            # The escalation path must not go through the loop: the reason for a
-            # second signal is usually that the loop is no longer making progress.
-            if signalled:
-                request_stop(signum)
-                return
-            with contextlib.suppress(RuntimeError, ValueError):
-                if not loop.is_closed():
-                    loop.call_soon_threadsafe(request_stop, signum)
-
         for sig in _HANDLED_SIGNALS:
-            _register(sig, win_handler, removers)
+            _register(sig, module_handler, removers)
 
     def uninstall() -> None:
         while removers:
