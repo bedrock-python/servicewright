@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.1](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.14.0...servicewright-v0.14.1) (2026-11-09)
+
+
+### Bug Fixes
+
+* a shutdown signal on the signal-module fallback wakes an idle loop ([#106](https://github.com/bedrock-python/servicewright/issues/106)) ([f507ab1](https://github.com/bedrock-python/servicewright/commit/f507ab1dac7f1fddf1b84758543f7c1162ebc98a))
+
 ## [0.14.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.13.2...servicewright-v0.14.0) (2026-10-16)
 
 
