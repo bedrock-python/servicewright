@@ -338,7 +338,7 @@ await Host(spec).run(settings, entrypoints=[http, grpc])
 ```
 
 - **Metrics: one backend per process.** A per-entrypoint override is deliberately NOT offered —
-  because out-of-process emitters (rest-client-kit, DB/Redis pools,
+  because out-of-process emitters (clientwright, DB/Redis pools,
   omni-box) write the global prometheus registry regardless, so per-entrypoint metrics give one
   service split-brain telemetry.
 - **Tracing / error-tracking are global singletons** → if two entrypoints name different backends,
@@ -488,7 +488,7 @@ external dependency.
 | One-shot / batch / CLI | `builtin/oneshot` | `ScopedEntrypoint` | one scope, run once | yes, zero-dep built-in |
 
 **Satellites (separate libs, consumed as `AppScope` singletons via Plugins — never `Entrypoint`s):**
-DB/UoW (`sqlalchemy-*`), outbox/inbox (`omni-box`), `rest-client-kit`, `deadline-budget`.
+DB/UoW (`sqlalchemy-foundation-kit`), outbox/inbox (`omni-box`), HTTP clients (`clientwright`), `deadline-budget`.
 
 ---
 
