@@ -84,20 +84,39 @@ logged with `job_id` and `run_id`; the scheduler keeps going.
 
 A long-running loop belongs in a `DaemonEntrypoint`:
 
+The outbox here is [omni-box](https://bedrock-python.github.io/omni-box/)'s
+(`pip install "omni-box[postgres,kafka]"`): the API writes the event row in the same
+transaction as the order, and this loop sends the rows to Kafka.
+
 ```python title="runtime/daemons.py"
 import asyncio
 import contextlib
 
+from aiokafka import AIOKafkaProducer
+from omni_box import OutboxPublisher
+from omni_box.core.converters import EnvelopeEventConverter
+from omni_box.infra.brokers.kafka import KafkaEventPublisher
+from omni_box.infra.storage.postgres import PostgresOutboxRepository
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
 from servicewright import UnitScopeProtocol
+
+from orders_service.infra.db.orm import OutboxEventDB
 
 POLL_INTERVAL_SECONDS = 1.0
 
 
 async def publish_outbox(scope: UnitScopeProtocol, stop: asyncio.Event) -> None:
-    publisher = await scope.get(OutboxPublisher)
+    maker = await scope.get(async_sessionmaker[AsyncSession])
+    producer = await scope.get(AIOKafkaProducer)      # started and stopped by its provider
+    broker = KafkaEventPublisher(producer=producer, converter=EnvelopeEventConverter())
     while not stop.is_set():
-        published = await publisher.publish_batch(limit=100)
-        if published:
+        async with maker() as session, session.begin():   # omni-box never commits
+            repo = PostgresOutboxRepository(session, model_class=OutboxEventDB)
+            result = await OutboxPublisher(repo, broker).publish_batch(
+                worker_id="orders-worker", batch_size=100,
+            )
+        if result.processed_event_ids:
             continue                                  # drain fast while there is work
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(stop.wait(), timeout=POLL_INTERVAL_SECONDS)
@@ -108,9 +127,10 @@ Two details worth copying: the loop skips the sleep while there is a backlog, an
 
 !!! note "One scope for the whole loop"
 
-    `DaemonEntrypoint` opens a single unit scope that lives as long as the loop. That fits a
-    publisher holding one connection. If each batch deserves its own session, write a
-    [`ScopedEntrypoint`](../guides/custom-entrypoint.md) and open a scope per iteration.
+    `DaemonEntrypoint` opens a single unit scope that lives as long as the loop, so the
+    session maker and the producer are resolved once. Each batch still gets a session and a
+    transaction of its own from `maker()`. `AIOKafkaProducer` comes from the container, for
+    example from aiokafka-foundation-kit's `AsyncKafkaProducerProvider`.
 
 ## 3. The consumer
 

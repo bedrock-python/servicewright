@@ -27,9 +27,11 @@ from servicewright.adapters.warmers.postgres import PostgresWarmer
 
 !!! warning "The two take different objects"
 
-    The warmer calls `session_manager.get_session()` — the shape used by
-    `sqlalchemy-postgres-kit`. The health check calls `session_maker()` directly — the shape of a
-    plain SQLAlchemy `async_sessionmaker`. Pass each what it asks for.
+    The warmer calls `session_manager.get_session()`, the shape of
+    [sqlalchemy-foundation-kit](https://bedrock-python.github.io/sqlalchemy-foundation-kit/)'s
+    `AsyncSessionManager`. The health check calls `session_maker()` directly, the shape of a
+    plain SQLAlchemy `async_sessionmaker` (`AsyncSessionManager.session_maker`). Pass each what
+    it asks for.
 
 Both run a trivial query and translate failures: the warmer raises `PostgresWarmupError` (which
 aborts startup unless `raise_on_failure=False`), the check returns `False`.
