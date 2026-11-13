@@ -109,6 +109,16 @@ class GrpcConfig:
     # service and the reflection service itself). Typically your own servicers.
     reflection_service_names: list[str] | None = None
 
+    context_metadata: dict[str, str] | None = None
+    """Request metadata ``UnitScopeInterceptor`` binds, as ``{metadata_key: context_key}``.
+
+    ``None`` reads ``x-request-id``, ``x-user-id``, ``x-tenant-id`` and
+    ``x-trace-id``. They are client input, and they reach every log line, OTel
+    baggage and outbound propagation, so on a port untrusted clients reach pass
+    ``{"x-request-id": "request_id"}``. ``{}`` reads no metadata, and the
+    request id is then always minted by the service.
+    """
+
     # --- GrpcServerSettingsProtocol surface (server tuning) -----------------
     max_concurrent_rpcs: int | None = None
 
@@ -154,6 +164,7 @@ class GrpcConfig:
         health_service_names: tuple[str, ...] = (),
         health_refresh_interval: float = DEFAULT_HEALTH_REFRESH_INTERVAL_SECONDS,
         reflection_service_names: list[str] | None = None,
+        context_metadata: dict[str, str] | None = None,
     ) -> GrpcConfig:
         """Build the config from a grpc-server-kit settings object.
 
@@ -165,13 +176,15 @@ class GrpcConfig:
         drains for 30 s, and the kit's values win. The mapping lives here so a
         field added to this class cannot go missing from a service's copy of it.
 
-        The keyword arguments are the three fields no settings object carries.
+        The keyword arguments are the four fields no settings object carries.
         ``health_service_names`` and ``reflection_service_names`` name your own
         servicers, which is code, not environment. ``health_refresh_interval``
         is deliberately not derived from the kit's ``health.cache_ttl``: the two
         agree while positive and disagree at zero, where ``cache_ttl=0`` means
         "re-check on every probe" and ``health_refresh_interval=0`` means "never
-        re-evaluate". The kit's ``metrics_enabled`` has no field here either;
+        re-evaluate". ``context_metadata`` is not a field of the kit's settings
+        model; to read it from the environment, add a field of your own and pass
+        it through. The kit's ``metrics_enabled`` has no field here either;
         that switch is ``GrpcEntrypoint(enable_metrics=...)``.
         """
         return cls(
@@ -183,6 +196,7 @@ class GrpcConfig:
             health_service_names=health_service_names,
             health_refresh_interval=health_refresh_interval,
             reflection_service_names=reflection_service_names,
+            context_metadata=context_metadata,
             max_concurrent_rpcs=settings.max_concurrent_rpcs,
             keepalive_time_ms=settings.keepalive_time_ms,
             keepalive_timeout_ms=settings.keepalive_timeout_ms,

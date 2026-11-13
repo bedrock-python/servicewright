@@ -74,6 +74,23 @@ from servicewright.adapters.grpc import (
 )
 ```
 
+### Which metadata keys are read
+
+By default `UnitScopeInterceptor` binds `x-request-id`, `x-user-id`, `x-tenant-id` and `x-trace-id`
+from every call. They are client input, and they reach the logs, OTel baggage and outbound
+propagation. That is fine behind an edge that strips or sets them. On a port that untrusted
+clients reach, read only the request id:
+
+```python
+GrpcConfig(context_metadata={"x-request-id": "request_id"})   # {metadata_key: context_key}
+GrpcConfig(context_metadata={})                               # no metadata; the id is always minted
+```
+
+`None`, the default, keeps the four. `idempotency_key`, `client_ip` and `user_agent` are read as
+before. grpc-server-kit's settings model has no such field; [From settings](#from-settings) shows
+how to read it from the environment. See
+[Request context](../concepts/context.md#the-identity-headers-are-client-input) for the trust model.
+
 ## Error mapping
 
 A `ServiceError` raised anywhere in your servicer is converted into the matching abort:
@@ -227,6 +244,7 @@ The main knobs:
 | `reflection_service_names` | `None` | Extra names to advertise via reflection |
 | `health_service_names` | `()` | Concrete services to report health for |
 | `health_refresh_interval` | `5.0` | Readiness poll interval; `0` disables polling |
+| `context_metadata` | `None` | Metadata bound into the context, `{metadata_key: context_key}`; `None` reads the four correlation keys |
 | `max_concurrent_rpcs` | `None` | Server-side concurrency cap |
 
 Plus the full server-tuning surface — keepalive (`keepalive_time_ms`, `keepalive_timeout_ms`,
@@ -268,13 +286,30 @@ A test in servicewright asserts that every `GrpcConfig` field is either read fro
 object or in the table below, so a knob added to `GrpcConfig` cannot leave the mapping silently
 incomplete.
 
-Three fields have no source on a settings object and are keyword arguments instead:
+Four fields have no source on a settings object and are keyword arguments instead:
 
 | Keyword | Default | Why it is not read from settings |
 | --- | --- | --- |
 | `health_service_names` | `()` | Your own servicers' names: code, not environment |
 | `reflection_service_names` | `None` | Same |
 | `health_refresh_interval` | `5.0` | The kit's `health.cache_ttl` looks alike but means the opposite at `0`: no caching there, no polling here |
+| `context_metadata` | `None` | The kit's settings model has no such field |
+
+To set `context_metadata` from the environment, add the field to your own subclass of the kit's
+model and pass it through:
+
+```python
+class GrpcSettings(BaseGrpcServerSettings):
+    context_metadata: dict[str, str] | None = None
+
+
+class Settings(BaseServiceSettings):
+    grpc: GrpcSettings = GrpcSettings()
+
+
+settings = Settings()  # GRPC__CONTEXT_METADATA='{"x-request-id":"request_id"}'
+config = GrpcConfig.from_settings(settings.grpc, context_metadata=settings.grpc.context_metadata)
+```
 
 The kit's `metrics_enabled` has no `GrpcConfig` field either; that switch is
 `GrpcEntrypoint(enable_metrics=settings.grpc.metrics_enabled)`.

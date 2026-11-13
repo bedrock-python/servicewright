@@ -10,6 +10,7 @@ which is the only way to see the status grpc.aio itself would have chosen.
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 
 import grpc
@@ -17,7 +18,7 @@ import grpc.aio
 import pytest
 from grpc_health.v1 import health_pb2, health_pb2_grpc
 
-from servicewright import AppSpec, Service
+from servicewright import AppSpec, Service, propagation_metadata
 from servicewright.adapters.grpc import GrpcConfig, GrpcEntrypoint
 from servicewright.testing import FakeContainer, FakeSettings
 
@@ -163,3 +164,54 @@ async def test__grpc_entrypoint__outbound_call_fails__client_gets_a_masked_inter
     assert error.details() == "internal_error"
     assert dict(error.trailing_metadata() or ())["x-error-code"] == "internal_error"
     assert _SECRET not in str(error.details())
+
+
+def _register_propagating_servicer(server: Any, _ctx: Any) -> None:
+    """Register one RPC that answers with the metadata it would send downstream."""
+
+    async def outbound(request: bytes, context: Any) -> bytes:
+        return json.dumps(propagation_metadata()).encode()
+
+    server.add_generic_rpc_handlers(
+        (grpc.method_handlers_generic_handler(_SERVICE, {"Outbound": grpc.unary_unary_rpc_method_handler(outbound)}),)
+    )
+
+
+@pytest.mark.parametrize(
+    ("context_metadata", "expected"),
+    [
+        (None, {"x-request-id": "req-1", "x-user-id": "user-9", "x-tenant-id": "tenant-3"}),
+        ({"x-request-id": "request_id"}, {"x-request-id": "req-1"}),
+    ],
+    ids=["default", "request-id-only"],
+)
+async def test__grpc_entrypoint__context_metadata_configured__forwards_only_the_keys_it_maps(
+    context_metadata: dict[str, str] | None, expected: dict[str, str]
+) -> None:
+    # Arrange
+    spec: AppSpec[Any, Any] = AppSpec(service_name="grpc-context-it", create_container=lambda _s: FakeContainer())
+    config = GrpcConfig(
+        host="127.0.0.1", port=0, enable_reflection=False, enable_channelz=False, context_metadata=context_metadata
+    )
+    ep = GrpcEntrypoint(config=config, servicers=_register_propagating_servicer)
+    stop = asyncio.Event()
+
+    async def call_then_stop() -> bytes:
+        while not (spec.health.ready and ep.bound_port):
+            await asyncio.sleep(0.01)
+        await asyncio.sleep(0.05)
+        async with grpc.aio.insecure_channel(f"127.0.0.1:{ep.bound_port}") as channel:
+            try:
+                return await channel.unary_unary(f"/{_SERVICE}/Outbound")(
+                    b"",
+                    metadata=(("x-request-id", "req-1"), ("x-user-id", "user-9"), ("x-tenant-id", "tenant-3")),
+                    timeout=5,
+                )
+            finally:
+                stop.set()
+
+    # Act
+    _, response = await asyncio.gather(Service(spec, entrypoints=[ep]).run(FakeSettings(), stop=stop), call_then_stop())
+
+    # Assert
+    assert json.loads(response) == expected

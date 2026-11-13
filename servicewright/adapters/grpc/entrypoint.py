@@ -203,7 +203,9 @@ class GrpcEntrypoint(ServerEntrypoint):
         # OUTERMOST wrapper. UnitScopeInterceptor is therefore first: every
         # downstream interceptor and the servicer see a live per-RPC scope.
         setters = get_default_context_setters() if self._context_setters is None else self._context_setters
-        interceptors: list[grpc.aio.ServerInterceptor] = [UnitScopeInterceptor(ctx.container, context_setters=setters)]
+        interceptors: list[grpc.aio.ServerInterceptor] = [
+            UnitScopeInterceptor(ctx.container, context_setters=setters, context_metadata=self._config.context_metadata)
+        ]
 
         # Inside the unit scope (so the masked abort is logged with the RPC's
         # correlation ids) but outside everything else: nothing below may leave
