@@ -39,6 +39,7 @@ from servicewright import (
 from servicewright.adapters import _uvicorn as uvicorn_mod
 from servicewright.adapters.fastapi import (
     AuthorizationHeader,
+    CorrelationIdMiddlewareConfig,
     CORSMiddlewareConfig,
     FastApiEntrypoint,
     FastApiPlugin,
@@ -1739,6 +1740,45 @@ async def test__context_middleware__client_supplied_id__is_preserved_end_to_end(
     # Assert
     assert response.json()["request_id"] == "order-sync-42"
     assert response.headers["x-request-id"] == "order-sync-42"
+
+
+async def _client_with_request_id_header(header_name: str) -> TestClient:
+    """A client over the default stack with the request id moved to ``header_name``."""
+    middlewares = MiddlewareConfig(correlation_id=CorrelationIdMiddlewareConfig(header_name=header_name))
+    ep = FastApiEntrypoint(config=HttpConfig(port=0), middlewares=middlewares)
+    app = await ep.build_app(_make_service_ctx(FakeContainer()))
+
+    @app.get("/echo")
+    def echo() -> dict[str, Any]:
+        return {"request_id": get_context_value("request_id")}
+
+    return TestClient(app)
+
+
+async def test__context_middleware__custom_request_id_header__reads_the_id_from_it() -> None:
+    # Arrange
+    client = await _client_with_request_id_header("X-Correlation-ID")
+
+    # Act
+    response = client.get("/echo", headers={"X-Correlation-ID": "order-sync-42"})
+
+    # Assert
+    assert response.json()["request_id"] == "order-sync-42"
+    assert response.headers["x-correlation-id"] == "order-sync-42"
+
+
+async def test__context_middleware__custom_request_id_header__no_longer_reads_x_request_id() -> None:
+    # Arrange
+    client = await _client_with_request_id_header("X-Correlation-ID")
+
+    # Act
+    response = client.get("/echo", headers={"X-Request-ID": "order-sync-42"})
+
+    # Assert
+    minted = response.json()["request_id"]
+    assert minted != "order-sync-42"
+    assert UUID(minted)
+    assert response.headers["x-correlation-id"] == minted
 
 
 async def test__unhandled_exception__masked_500__still_carries_the_request_id(correlated_client: Any) -> None:

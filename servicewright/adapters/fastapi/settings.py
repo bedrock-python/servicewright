@@ -92,7 +92,9 @@ class CorrelationIdMiddlewareSettings(BaseModel):
     """``CorrelationIdMiddlewareConfig`` as settings: how the request id is echoed."""
 
     enabled: bool = Field(default=True, description="Echo the request id in a response header")
-    header_name: str = Field(default=DEFAULT_CORRELATION_ID_HEADER, description="The header it is echoed in")
+    header_name: str = Field(
+        default=DEFAULT_CORRELATION_ID_HEADER, description="The header the request id is read from and echoed in"
+    )
 
     def to_config(self) -> CorrelationIdMiddlewareConfig:
         return CorrelationIdMiddlewareConfig(enabled=self.enabled, header_name=self.header_name)
@@ -151,8 +153,9 @@ class MiddlewareSettings(BaseModel):
     processing_time: bool = Field(default=True, description="X-Process-Time response header")
     context_headers: dict[str, str] | None = Field(
         default=None,
-        description="Request headers ContextMiddleware binds, {header: context_key}; None reads x-request-id, "
-        "x-user-id, x-tenant-id and x-trace-id, {} reads none; JSON in the environment",
+        description="Request headers ContextMiddleware binds, {header: context_key}; None reads the "
+        "correlation_id header (x-request-id by default), x-user-id, x-tenant-id and x-trace-id, {} reads none; "
+        "JSON in the environment",
     )
     logging: LoggingMiddlewareSettings = Field(default_factory=LoggingMiddlewareSettings)
     correlation_id: CorrelationIdMiddlewareSettings = Field(default_factory=CorrelationIdMiddlewareSettings)
