@@ -52,6 +52,11 @@ class LoggingSettings(BaseModel):
 
     level: LogLevelStr = Field(default="INFO", description="Root log level; case-insensitive on input")
     use_json: bool = Field(default=True, description="JSON lines (True) or human-readable console output")
+    event_key: str = Field(
+        default="event",
+        min_length=1,
+        description="Key of a line's text in JSON output; read by the structlog backend, console output keeps 'event'",
+    )
 
     @field_validator("level", mode="before")
     @classmethod

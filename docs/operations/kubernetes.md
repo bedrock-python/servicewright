@@ -226,11 +226,16 @@ observability and shutdown stay identical because they come from the same spec.
 
 ## Logging
 
-Ship JSON to stdout and let your collector do the rest:
+Ship JSON lines and let your collector do the rest:
 
 ```python
 LoggingSettings(level="INFO", use_json=True)
 ```
+
+The logging sinks write to stderr, which the container runtime collects like stdout. If your
+collector reads stdout only, give the structlog sink `stream=sys.stdout`. If it reads a line's text
+from `message`, set `LOGGING__EVENT_KEY=message`. See
+[structlog](../adapters/observability-backends.md#event-key-extra-processors-stream).
 
 Every line carries `request_id` (or `job_id` / `run_id`) automatically, so a single grep spans the
 API request and the work it triggered. See [Request context](../concepts/context.md).

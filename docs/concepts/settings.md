@@ -35,6 +35,7 @@ your own that uses them behaves exactly like the shipped one.
 | --- | --- | --- | --- |
 | `level` | `str` | `"INFO"` | Root log level: `DEBUG`, `INFO`, ... |
 | `use_json` | `bool` | `True` | JSON lines vs human-readable console output |
+| `event_key` | `str` | `"event"` | Key of a line's text in JSON output, `"message"` for ELK; read by the structlog backend only, console output keeps `event` |
 
 ### `metrics`
 

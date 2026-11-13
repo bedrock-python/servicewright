@@ -156,6 +156,49 @@ Because contextvars merging is in the chain, anything bound into the
 {"event": "Request finished", "request_id": "9f2c...", "status_code": 200, "level": "info"}
 ```
 
+### Event key, extra processors, stream
+
+A log pipeline that reads a line's text from `message` (ELK does) needs nothing but the
+environment:
+
+```bash
+LOGGING__EVENT_KEY=message
+```
+
+```json
+{"message": "Request finished", "request_id": "9f2c...", "status_code": 200, "level": "info"}
+```
+
+The rest goes through the sink's constructor, via
+[instance injection](../concepts/observability.md#instance-injection):
+
+```python
+import sys
+
+import structlog
+
+from servicewright.adapters.observability import StructlogLoggingSink
+
+observability = ObservabilityManager(
+    ObsConfig(logging="structlog"),
+    logging=StructlogLoggingSink(
+        event_key="message",
+        extra_processors=[structlog.processors.CallsiteParameterAdder()],
+        stream=sys.stdout,
+    ),
+)
+```
+
+- `event_key` renames `event` right before the JSON renderer, for structlog lines and standard
+  library records alike. Left `None`, it is `settings.logging.event_key`, and `"event"` for a
+  settings section without that field. Console output keeps `event`, which is what the console
+  renderer reads. The text replaces a field of the same name: with `event_key="message"`,
+  `log.info("Order placed", message="draft")` renders `"message": "Order placed"` and the
+  `draft` is gone.
+- `extra_processors` run on every line after `ExtraAdder` and before the redactor, so whatever
+  they add is redacted like the rest of the payload.
+- `stream` is where the lines go. `None`, the default, is stderr.
+
 ## stdlib (logging)
 
 ```python
