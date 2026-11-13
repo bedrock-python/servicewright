@@ -357,12 +357,15 @@ Entrypoint constructors, all keyword-only:
   metrics_prefix=None, kind="grpc", essential=True)`. `GrpcConfig` defaults:
   `port=50051`, `grace_period=30.0`, `enable_reflection=False`, `enable_channelz=False`,
   `health_service_names=()`, `health_refresh_interval=5.0`.
+  `GrpcConfig.context_metadata: dict[str, str] | None = None` is `{metadata_key: context_key}`
+  for `UnitScopeInterceptor`: `None` reads `x-request-id`, `x-user-id`, `x-tenant-id` and
+  `x-trace-id`, `{}` reads none and always mints the request id (rule 21).
   `GrpcConfig.from_settings(settings, *, health_service_names=(), health_refresh_interval=5.0,
-  reflection_service_names=None)` reads every other field off anything satisfying
-  grpc-server-kit's `GrpcServerSettingsProtocol` (`BaseGrpcServerSettings`, `GrpcServerConfig`),
-  the kit's defaults included (`[::]`, `grace_period=5.0`); the three keywords are the fields no
-  settings object carries, and `health_refresh_interval` is deliberately not the kit's
-  `health.cache_ttl` (opposite meaning at `0`). Interceptor chain, outermost first:
+  reflection_service_names=None, context_metadata=None)` reads every other field off anything
+  satisfying grpc-server-kit's `GrpcServerSettingsProtocol` (`BaseGrpcServerSettings`,
+  `GrpcServerConfig`), the kit's defaults included (`[::]`, `grace_period=5.0`); the four keywords
+  are the fields no settings object carries, and `health_refresh_interval` is deliberately not the
+  kit's `health.cache_ttl` (opposite meaning at `0`). Interceptor chain, outermost first:
   `UnitScopeInterceptor`, `UnhandledErrorInterceptor`, metrics, yours,
   `ServiceErrorInterceptor`.
 * `SchedulerEntrypoint(jobs, enable_metrics=False, metrics_prefix=None,
@@ -486,14 +489,16 @@ Each `*Plugin` takes exactly the same arguments as its entrypoint and exposes `.
     `min(host drain_grace_seconds, its own cap)`: `GrpcConfig.grace_period` for gRPC,
     `graceful_timeout` for FastAPI and Litestar (`0` there sets no cap). Both caps default to
     30.0, the default grace; raising `drain_grace_seconds` above that needs the cap raised too.
-21. **The FastAPI context headers are client input.** By default `x-user-id`, `x-tenant-id`
-    and `x-trace-id` are bound from any request into the logs, the Sentry user and tags, and
-    `propagation_metadata()`, which forwards them downstream. `is_safe_context_id` checks the
-    characters, not the sender. Behind an edge that strips or sets them this is fine; on a port
-    untrusted clients reach, pass
+21. **The FastAPI context headers and the gRPC context metadata are client input.** By default
+    `x-user-id`, `x-tenant-id` and `x-trace-id` are bound from any request or RPC into the logs,
+    the Sentry user and tags (HTTP), OTel baggage, and `propagation_metadata()`, which forwards
+    them downstream. `is_safe_context_id` checks the characters, not the sender. Behind an edge
+    that strips or sets them this is fine; on a port untrusted clients reach, pass
     `MiddlewareConfig(context_headers={"x-request-id": "request_id"})`, or set
-    `SERVER__MIDDLEWARES__CONTEXT_HEADERS='{"x-request-id":"request_id"}'`. The gRPC
-    interceptor reads the same metadata keys and has no such setting.
+    `SERVER__MIDDLEWARES__CONTEXT_HEADERS='{"x-request-id":"request_id"}'`. Over gRPC pass
+    `GrpcConfig(context_metadata={"x-request-id": "request_id"})`; the kit's settings model has
+    no such field, so an environment variable needs a settings field of your own passed to
+    `GrpcConfig.from_settings(..., context_metadata=...)`.
 
 ## Common mistakes
 

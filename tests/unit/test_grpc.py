@@ -21,7 +21,7 @@ from grpc_server_kit import GrpcServerConfig
 from grpc_server_kit.aio.interceptors import AsyncMetricsInterceptor, RpcCall
 from grpc_server_kit.settings import BaseGrpcServerSettings, BaseHealthSettings
 
-from servicewright import AppSpec, Entrypoint, Plugin, Service
+from servicewright import AppSpec, Entrypoint, Plugin, Service, current_context, propagation_metadata
 from servicewright.adapters.grpc import (
     IDEMPOTENCY_KEY_METADATA,
     GrpcConfig,
@@ -38,6 +38,7 @@ from servicewright.adapters.grpc import (
     get_user_agent,
 )
 from servicewright.adapters.grpc import entrypoint as entrypoint_mod
+from servicewright.adapters.grpc.metadata import get_correlation_ids
 from servicewright.core.health import HealthRegistry
 from servicewright.core.observability import NullCounter, NullHistogram, ObservabilityManager
 from servicewright.core.spec import BootstrapContext, ServiceContext
@@ -215,6 +216,7 @@ _NOT_FROM_SETTINGS = {
     "health_service_names": "your own servicers: code, not environment",
     "reflection_service_names": "your own servicers: code, not environment",
     "health_refresh_interval": "the kit's health.cache_ttl means the opposite at zero",
+    "context_metadata": "not in the kit's settings model: a service passes a field of its own through",
 }
 
 
@@ -246,10 +248,12 @@ def test__grpc_config_from_settings__keywords__fill_the_fields_no_settings_carry
         health_service_names=("my.pkg.Orders",),
         health_refresh_interval=0.5,
         reflection_service_names=["my.pkg.Orders"],
+        context_metadata={"x-request-id": "request_id"},
     )
     assert config.health_service_names == ("my.pkg.Orders",)
     assert config.health_refresh_interval == 0.5
     assert config.reflection_service_names == ["my.pkg.Orders"]
+    assert config.context_metadata == {"x-request-id": "request_id"}
 
 
 def test__grpc_config_from_settings__kit_defaults__win_over_the_config_defaults() -> None:
@@ -795,6 +799,87 @@ async def test__unit_scope_interceptor__rpc_served__mirrors_the_context_into_the
 
 
 # --------------------------------------------------------------------------- #
+# Which metadata keys UnitScopeInterceptor reads (#112)
+# --------------------------------------------------------------------------- #
+_CLIENT_METADATA: list[tuple[str, str | bytes]] = [
+    ("x-request-id", "req-1"),
+    ("x-user-id", "user-9"),
+    ("x-tenant-id", "tenant-3"),
+    ("x-trace-id", "trace-7"),
+]
+_REQUEST_ID_ONLY = {"x-request-id": "request_id"}
+
+
+async def _serve_rpc_reading(context_metadata: dict[str, str] | None) -> dict[str, Any]:
+    """Serve one RPC carrying ``_CLIENT_METADATA`` and report what got bound inside it."""
+    interceptor = UnitScopeInterceptor(FakeContainer(), context_metadata=context_metadata)
+    async with interceptor.around(_make_call(_FakeServicerContext(_CLIENT_METADATA), "/pkg.Svc/Rpc")):
+        return {"context": current_context(), "propagation": propagation_metadata()}
+
+
+@pytest.mark.parametrize(
+    ("context_metadata", "expected"),
+    [
+        (None, {"request_id": "req-1", "user_id": "user-9", "tenant_id": "tenant-3", "trace_id": "trace-7"}),
+        (_REQUEST_ID_ONLY, {"request_id": "req-1"}),
+    ],
+    ids=["default", "request-id-only"],
+)
+async def test__context_metadata__configured__binds_only_the_keys_it_maps(
+    context_metadata: dict[str, str] | None, expected: dict[str, str]
+) -> None:
+    # Act
+    seen = await _serve_rpc_reading(context_metadata)
+
+    # Assert
+    assert seen["context"] == {"grpc_method": "/pkg.Svc/Rpc", **expected}
+
+
+@pytest.mark.parametrize(
+    ("context_metadata", "expected"),
+    [
+        (None, {"x-request-id": "req-1", "x-user-id": "user-9", "x-tenant-id": "tenant-3", "x-trace-id": "trace-7"}),
+        (_REQUEST_ID_ONLY, {"x-request-id": "req-1"}),
+    ],
+    ids=["default", "request-id-only"],
+)
+async def test__context_metadata__configured__propagates_only_the_keys_it_maps(
+    context_metadata: dict[str, str] | None, expected: dict[str, str]
+) -> None:
+    # Act
+    seen = await _serve_rpc_reading(context_metadata)
+
+    # Assert
+    assert seen["propagation"] == expected
+
+
+async def test__context_metadata__empty__binds_no_client_metadata() -> None:
+    # Act
+    seen = await _serve_rpc_reading({})
+
+    # Assert
+    context = seen["context"]
+    assert context.keys() == {"grpc_method", "request_id"}
+    assert uuid.UUID(context["request_id"])
+
+
+async def test__grpc_entrypoint_bind__context_metadata_in_the_config__the_unit_scope_interceptor_reads_only_it(
+    patched_server: _FakeAsyncServer,
+) -> None:
+    # Arrange
+    ep = GrpcEntrypoint(config=GrpcConfig(port=0, context_metadata=_REQUEST_ID_ONLY), servicers=lambda _s, _c: None)
+    await ep.bind(_make_service_ctx(FakeContainer()))
+    unit_scope = patched_server.create_calls[0]["interceptors"][0]  # type: ignore[attr-defined]
+
+    # Act
+    async with unit_scope.around(_make_call(_FakeServicerContext(_CLIENT_METADATA), "/pkg.Svc/Rpc")):
+        propagated = propagation_metadata()
+
+    # Assert
+    assert propagated == {"x-request-id": "req-1"}
+
+
+# --------------------------------------------------------------------------- #
 # ServiceErrorInterceptor: kind -> grpc.StatusCode mapping
 # --------------------------------------------------------------------------- #
 class _AbortedSentinelError(Exception):
@@ -1117,6 +1202,40 @@ def test__get_user_agent__no_metadata_at_all__returns_none() -> None:
 def test__get_client_context__metadata_present__returns_ip_and_agent() -> None:
     ctx = _FakeServicerContext([("x-real-ip", "9.9.9.9"), ("x-user-agent", "ua/1")])
     assert get_client_context(ctx) == ("9.9.9.9", "ua/1")
+
+
+@pytest.mark.parametrize(
+    ("keys", "expected"),
+    [
+        (None, {"request_id": "req-1", "user_id": "user-9", "tenant_id": "tenant-3", "trace_id": "trace-7"}),
+        (_REQUEST_ID_ONLY, {"request_id": "req-1"}),
+        ({"X-Org-Id": "org_id"}, {"org_id": "org-5"}),
+        ({}, {}),
+    ],
+    ids=["default", "request-id-only", "mixed-case-key", "empty"],
+)
+def test__get_correlation_ids__keys_given__reads_exactly_those(
+    keys: dict[str, str] | None, expected: dict[str, str]
+) -> None:
+    # Arrange
+    ctx = _FakeServicerContext([*_CLIENT_METADATA, ("x-org-id", "org-5")])
+
+    # Act
+    correlation = get_correlation_ids(ctx, keys)
+
+    # Assert
+    assert correlation == expected
+
+
+def test__get_correlation_ids__mapped_key_with_a_log_unsafe_value__drops_it() -> None:
+    # Arrange
+    ctx = _FakeServicerContext([("x-org-id", "bad\nid")])
+
+    # Act
+    correlation = get_correlation_ids(ctx, {"x-org-id": "org_id"})
+
+    # Assert
+    assert correlation == {}
 
 
 # --------------------------------------------------------------------------- #

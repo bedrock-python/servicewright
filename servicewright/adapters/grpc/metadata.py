@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING
 from ...core.context import is_safe_context_id
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     import grpc.aio
 
 IDEMPOTENCY_KEY_METADATA = "x-idempotency-key"
@@ -24,13 +26,13 @@ TRACE_ID_METADATA = "x-trace-id"
 _X_FORWARDED_FOR = "x-forwarded-for"
 _X_REAL_IP = "x-real-ip"
 
-# Correlation metadata -> context-key mapping (mirrors the HTTP middleware).
-_CORRELATION_METADATA_KEYS: tuple[tuple[str, str], ...] = (
-    (REQUEST_ID_METADATA, "request_id"),
-    (USER_ID_METADATA, "user_id"),
-    (TENANT_ID_METADATA, "tenant_id"),
-    (TRACE_ID_METADATA, "trace_id"),
-)
+# The default correlation metadata -> context-key mapping (mirrors the HTTP middleware).
+_CORRELATION_METADATA_KEYS: dict[str, str] = {
+    REQUEST_ID_METADATA: "request_id",
+    USER_ID_METADATA: "user_id",
+    TENANT_ID_METADATA: "tenant_id",
+    TRACE_ID_METADATA: "trace_id",
+}
 
 
 def _decode(value: str | bytes) -> str:
@@ -94,20 +96,29 @@ def get_client_context(context: grpc.aio.ServicerContext) -> tuple[str | None, s
     return get_client_ip(context), get_user_agent(context)
 
 
-def get_correlation_ids(context: grpc.aio.ServicerContext) -> dict[str, str]:
+def get_correlation_ids(
+    context: grpc.aio.ServicerContext,
+    keys: Mapping[str, str] | None = None,
+) -> dict[str, str]:
     """Extract correlation identifiers from gRPC metadata (mirrors the HTTP middleware).
 
-    Reads ``x-request-id`` / ``x-user-id`` / ``x-tenant-id`` / ``x-trace-id``
-    (case-insensitive); malformed values (log-unsafe or overlong) are dropped.
+    Metadata keys match case-insensitively; malformed values (log-unsafe or
+    overlong) are dropped.
+
+    Args:
+        context: The servicer context of the RPC.
+        keys: ``{metadata_key: context_key}`` to read; ``None`` reads
+            ``x-request-id`` / ``x-user-id`` / ``x-tenant-id`` / ``x-trace-id``.
     """
     metadata = context.invocation_metadata()
     if not metadata:
         return {}
 
+    mapping = _CORRELATION_METADATA_KEYS if keys is None else keys
     metadata_dict = {key.lower(): value for key, value in metadata}
     correlation: dict[str, str] = {}
-    for header, ctx_key in _CORRELATION_METADATA_KEYS:
-        raw = metadata_dict.get(header)
+    for header, ctx_key in mapping.items():
+        raw = metadata_dict.get(header.lower())
         if raw is None:
             continue
         value = _decode(raw)

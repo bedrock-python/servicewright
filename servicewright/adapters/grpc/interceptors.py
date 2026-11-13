@@ -61,9 +61,10 @@ class UnitScopeInterceptor(AsyncServerInterceptor):
     every downstream interceptor and the servicer see a live unit scope. The
     scope carries the RPC payload (method name, correlation ids, idempotency
     key, client ip / user agent) as its ``context``, mirrored into the core
-    context store. Correlation ids come from ``x-request-id`` / ``x-user-id`` /
-    ``x-tenant-id`` / ``x-trace-id`` metadata (like the HTTP middleware), with
-    the request id auto-generated when the client sent none.
+    context store. Correlation ids come from the ``context_metadata`` keys, by
+    default ``x-request-id`` / ``x-user-id`` / ``x-tenant-id`` / ``x-trace-id``
+    (like the HTTP middleware), with the request id auto-generated when the
+    client sent none.
 
     The same values are pushed into the supplied
     :class:`~servicewright.core.context.ContextSetter`s, which is what bridges
@@ -76,6 +77,9 @@ class UnitScopeInterceptor(AsyncServerInterceptor):
     Args:
         container: The DI container the per-RPC unit scope is opened on.
         context_setters: Bridges pushing the RPC context into external systems.
+        context_metadata: Request metadata bound into the context, as
+            ``{metadata_key: context_key}``. ``None`` reads the four keys above;
+            ``{}`` reads none, so the request id is always minted.
     """
 
     def __init__(
@@ -83,10 +87,12 @@ class UnitScopeInterceptor(AsyncServerInterceptor):
         container: DependencyContainerProtocol,
         *,
         context_setters: Sequence[ContextSetter] = (),
+        context_metadata: dict[str, str] | None = None,
     ) -> None:
         super().__init__()
         self._container = container
         self._context_setters = tuple(context_setters)
+        self._context_metadata = context_metadata
 
     async def around_call(self, call: RpcCall) -> AsyncIterator[None]:
         """Wrap the RPC in a fresh unit scope bound to a context variable."""
@@ -128,8 +134,7 @@ class UnitScopeInterceptor(AsyncServerInterceptor):
             except Exception:
                 logger.exception("Failed to call gRPC context cleanup remover")
 
-    @staticmethod
-    def _build_context(context: grpc.aio.ServicerContext, method_name: str) -> dict[str, Any]:
+    def _build_context(self, context: grpc.aio.ServicerContext, method_name: str) -> dict[str, Any]:
         client_ip, user_agent = get_client_context(context)
         idempotency_key = get_idempotency_key(context)
         if idempotency_key is not None and not is_safe_context_id(idempotency_key):
@@ -141,7 +146,7 @@ class UnitScopeInterceptor(AsyncServerInterceptor):
             "client_ip": client_ip,
             "user_agent": user_agent,
         }
-        unit_context.update(get_correlation_ids(context))
+        unit_context.update(get_correlation_ids(context, self._context_metadata))
         if "request_id" not in unit_context:
             unit_context["request_id"] = str(uuid.uuid4())
         return unit_context

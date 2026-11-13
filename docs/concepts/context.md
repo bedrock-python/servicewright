@@ -96,7 +96,22 @@ SERVER__MIDDLEWARES__CONTEXT_HEADERS='{"x-request-id":"request_id"}'
 
 `context_headers` maps a request header to the context key it binds. `None`, the default, reads
 the four headers in the table above. `{}` reads none, so the service always mints the request id.
-The gRPC interceptor reads the same four metadata keys and has no such setting.
+
+The gRPC interceptor reads the same four keys from metadata. `GrpcConfig.context_metadata` is the
+same choice there, `{metadata_key: context_key}` with the same `None` and `{}`:
+
+```python
+from servicewright.adapters.grpc import GrpcConfig, GrpcEntrypoint
+
+GrpcEntrypoint(
+    config=GrpcConfig(context_metadata={"x-request-id": "request_id"}),
+    servicers=register_servicers,
+)
+```
+
+grpc-server-kit's settings model has no such field, so there is no environment variable out of the
+box. [gRPC](../adapters/grpc.md#from-settings) shows how to add one to your settings and pass it to
+`GrpcConfig.from_settings`.
 
 ## Writing
 
