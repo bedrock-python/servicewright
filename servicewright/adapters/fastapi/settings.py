@@ -149,6 +149,11 @@ class MiddlewareSettings(BaseModel):
     context: bool = Field(default=True, description="ContextMiddleware: correlation ids, bound and echoed")
     sentry: bool = Field(default=True, description="SentryMiddleware: enrich the Sentry scope from the request")
     processing_time: bool = Field(default=True, description="X-Process-Time response header")
+    context_headers: dict[str, str] | None = Field(
+        default=None,
+        description="Request headers ContextMiddleware binds, {header: context_key}; None reads x-request-id, "
+        "x-user-id, x-tenant-id and x-trace-id, {} reads none; JSON in the environment",
+    )
     logging: LoggingMiddlewareSettings = Field(default_factory=LoggingMiddlewareSettings)
     correlation_id: CorrelationIdMiddlewareSettings = Field(default_factory=CorrelationIdMiddlewareSettings)
     gzip: GZipMiddlewareSettings = Field(default_factory=GZipMiddlewareSettings)
@@ -168,6 +173,7 @@ class MiddlewareSettings(BaseModel):
             sentry=self.sentry,
             processing_time=self.processing_time,
             context_setters=context_setters,
+            context_headers=None if self.context_headers is None else dict(self.context_headers),
             logging=self.logging.to_config(),
             correlation_id=self.correlation_id.to_config(),
             gzip=self.gzip.to_config(),

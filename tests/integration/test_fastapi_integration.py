@@ -16,11 +16,16 @@ import httpx
 import pytest
 from fastapi import APIRouter
 
-from servicewright import AppSpec, Service
-from servicewright.adapters.fastapi import FastApiEntrypoint, HttpConfig
+from servicewright import AppSpec, Service, propagation_metadata
+from servicewright.adapters.fastapi import FastApiEntrypoint, HttpConfig, HttpServerSettings
+from servicewright.adapters.settings import BaseServiceSettings
 from servicewright.testing import FakeContainer, FakeSettings
 
 pytestmark = pytest.mark.integration
+
+
+class _Settings(BaseServiceSettings):
+    server: HttpServerSettings = HttpServerSettings()
 
 
 def _free_port() -> int:
@@ -104,3 +109,43 @@ async def test__fastapi_entrypoint__request_outlives_the_drain_grace__uvicorn_ca
     # Assert
     assert response.status_code == 500, "uvicorn cancels the request itself, not a hard stop that orphans it"
     assert handler_finished is False
+
+
+async def test__fastapi_entrypoint__context_headers_from_the_environment__forwards_only_the_request_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Arrange
+    monkeypatch.setenv("SERVER__MIDDLEWARES__CONTEXT_HEADERS", '{"x-request-id":"request_id"}')
+    port = _free_port()
+    spec: AppSpec[Any, Any] = AppSpec(service_name="http-it-service", create_container=lambda _s: FakeContainer())
+    router = APIRouter()
+
+    @router.get("/outbound")
+    async def outbound() -> dict[str, str]:
+        return propagation_metadata()
+
+    ep = FastApiEntrypoint(
+        config=HttpConfig(host="127.0.0.1", port=port),
+        middlewares=_Settings().server.middlewares.to_config(),
+        routers=(router,),
+    )
+    stop = asyncio.Event()
+
+    async def request_then_stop() -> httpx.Response:
+        while not spec.health.ready:
+            await asyncio.sleep(0.01)
+        async with httpx.AsyncClient(base_url=f"http://127.0.0.1:{port}", timeout=2.0) as client:
+            try:
+                return await client.get(
+                    "/outbound", headers={"X-Request-ID": "req-1", "X-User-Id": "user-9", "X-Tenant-Id": "tenant-3"}
+                )
+            finally:
+                stop.set()
+
+    # Act
+    _, response = await asyncio.gather(
+        Service(spec, entrypoints=[ep]).run(FakeSettings(), stop=stop), request_then_stop()
+    )
+
+    # Assert
+    assert response.json() == {"x-request-id": "req-1"}

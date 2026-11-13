@@ -131,6 +131,7 @@ def setup_middleware_stack(
         setters = config.context_setters if config.context_setters is not None else get_default_context_setters()
         app.add_middleware(
             ContextMiddleware,
+            header_extractors=config.context_headers,
             context_setters=setters,
             request_id_header=config.correlation_id.header_name,
             echo_request_id=config.correlation_id.enabled,

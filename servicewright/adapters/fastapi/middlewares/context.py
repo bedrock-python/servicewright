@@ -59,12 +59,14 @@ class ContextMiddleware:
     ) -> None:
         self.app = app
         self.echo_request_id = echo_request_id
-        self.header_extractors = header_extractors or {
-            "x-request-id": "request_id",
-            "x-user-id": "user_id",
-            "x-tenant-id": "tenant_id",
-            "x-trace-id": "trace_id",
-        }
+        if header_extractors is None:
+            header_extractors = {
+                "x-request-id": "request_id",
+                "x-user-id": "user_id",
+                "x-tenant-id": "tenant_id",
+                "x-trace-id": "trace_id",
+            }
+        self.header_extractors = header_extractors
         self.cookie_extractors = cookie_extractors or {}
         self.custom_extractors = custom_extractors or []
         self.auto_generate_request_id = auto_generate_request_id

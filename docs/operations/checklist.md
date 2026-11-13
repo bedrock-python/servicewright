@@ -68,6 +68,10 @@ to a failure someone has already had.
       production port.
 - [ ] CORS lists explicit origins. `allow_credentials=True` with `allow_origins=["*"]` is rejected
       at construction, but a bare `["*"]` is still worth a second look.
+- [ ] An HTTP port that untrusted clients reach either sits behind an edge that strips or sets
+      `X-User-Id`, `X-Tenant-Id` and `X-Trace-Id`, or sets
+      `MiddlewareConfig(context_headers={"x-request-id": "request_id"})`. Otherwise the client picks
+      the `user_id` in your logs, on Sentry and in outbound propagation.
 - [ ] Secrets reach the process through settings, not through code — sink setup happens before the
       DI container exists.
 - [ ] `max_receive_message_length` and request size limits are set for public endpoints.

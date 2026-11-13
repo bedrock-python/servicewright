@@ -15,6 +15,7 @@ import socket
 from collections.abc import Iterator
 from typing import Any, cast
 from unittest.mock import MagicMock
+from uuid import UUID
 
 import pytest
 from deadline_budget import DeadlineExceededError
@@ -31,7 +32,9 @@ from servicewright import (
     ServerEntrypoint,
     Service,
     ServiceError,
+    current_context,
     get_context_value,
+    propagation_metadata,
 )
 from servicewright.adapters import _uvicorn as uvicorn_mod
 from servicewright.adapters.fastapi import (
@@ -45,6 +48,7 @@ from servicewright.adapters.fastapi import (
     LivenessResponse,
     MetricsInstrumentatorConfig,
     MiddlewareConfig,
+    MiddlewareSettings,
     ProblemDetails,
     ReadinessResponse,
     UnitScopeDep,
@@ -1367,6 +1371,145 @@ async def test__context_middleware__log_unsafe_header_value__drops_it() -> None:
     # The unsafe request id was replaced by a generated UUID; user id dropped.
     assert UUID(seen["request_id"])
     assert seen["user_id"] is None
+
+
+# --------------------------------------------------------------------------- #
+# Which request headers ContextMiddleware reads (#110)
+# --------------------------------------------------------------------------- #
+_CLIENT_HEADERS = {"X-Request-ID": "req-1", "X-User-Id": "user-9", "X-Tenant-Id": "tenant-3", "X-Trace-Id": "trace-7"}
+_REQUEST_ID_ONLY = {"x-request-id": "request_id"}
+
+
+class _RecordingSentryScope:
+    """The Sentry isolation scope, as far as ``SentryMiddleware`` writes to it."""
+
+    def __init__(self) -> None:
+        self.tags: dict[str, Any] = {}
+        self.users: list[dict[str, Any]] = []
+
+    def set_tag(self, key: str, value: Any) -> None:
+        self.tags[key] = value
+
+    def set_user(self, value: dict[str, Any]) -> None:
+        self.users.append(value)
+
+    def set_context(self, key: str, value: dict[str, Any]) -> None:
+        pass
+
+
+@pytest.fixture
+def sentry_scope(monkeypatch: pytest.MonkeyPatch) -> _RecordingSentryScope:
+    from servicewright.adapters.fastapi.middlewares import sentry as sentry_middleware
+
+    scope = _RecordingSentryScope()
+    monkeypatch.setattr(sentry_middleware.sentry_sdk, "get_isolation_scope", lambda: scope)
+    return scope
+
+
+async def _client_reading(context_headers: dict[str, str] | None) -> TestClient:
+    """A client over the stack ``MiddlewareSettings`` describes, with a route reporting what got bound."""
+    router = APIRouter()
+
+    @router.get("/ctx")
+    async def read_ctx() -> dict[str, Any]:
+        return {"context": current_context(), "propagation": propagation_metadata()}
+
+    middlewares = MiddlewareSettings(context_headers=context_headers).to_config()
+    ep = FastApiEntrypoint(config=HttpConfig(port=0), routers=(router,), middlewares=middlewares)
+    return await _build_client(ep, _make_service_ctx(FakeContainer()))
+
+
+@pytest.mark.parametrize(
+    ("context_headers", "expected"),
+    [
+        (None, {"request_id": "req-1", "user_id": "user-9", "tenant_id": "tenant-3", "trace_id": "trace-7"}),
+        (_REQUEST_ID_ONLY, {"request_id": "req-1"}),
+    ],
+    ids=["default", "request-id-only"],
+)
+async def test__context_headers__configured__binds_only_the_headers_it_maps(
+    context_headers: dict[str, str] | None, expected: dict[str, str]
+) -> None:
+    # Arrange
+    client = await _client_reading(context_headers)
+
+    # Act
+    response = client.get("/ctx", headers=_CLIENT_HEADERS)
+
+    # Assert
+    assert response.json()["context"] == expected
+
+
+@pytest.mark.parametrize(
+    ("context_headers", "expected"),
+    [
+        (None, {"x-request-id": "req-1", "x-user-id": "user-9", "x-tenant-id": "tenant-3", "x-trace-id": "trace-7"}),
+        (_REQUEST_ID_ONLY, {"x-request-id": "req-1"}),
+    ],
+    ids=["default", "request-id-only"],
+)
+async def test__context_headers__configured__propagates_only_the_headers_it_maps(
+    context_headers: dict[str, str] | None, expected: dict[str, str]
+) -> None:
+    # Arrange
+    client = await _client_reading(context_headers)
+
+    # Act
+    response = client.get("/ctx", headers=_CLIENT_HEADERS)
+
+    # Assert
+    assert response.json()["propagation"] == expected
+
+
+@pytest.mark.parametrize(
+    ("context_headers", "expected_users", "expected_tags"),
+    [
+        (None, [{"id": "user-9"}], {"request_id": "req-1", "tenant_id": "tenant-3", "user_id": "user-9"}),
+        (_REQUEST_ID_ONLY, [], {"request_id": "req-1"}),
+    ],
+    ids=["default", "request-id-only"],
+)
+async def test__context_headers__configured__sentry_scope_gets_only_the_headers_it_maps(
+    sentry_scope: _RecordingSentryScope,
+    context_headers: dict[str, str] | None,
+    expected_users: list[dict[str, str]],
+    expected_tags: dict[str, str],
+) -> None:
+    # Arrange
+    client = await _client_reading(context_headers)
+
+    # Act
+    client.get("/ctx", headers=_CLIENT_HEADERS)
+
+    # Assert
+    assert sentry_scope.users == expected_users
+    assert sentry_scope.tags == expected_tags
+
+
+async def test__context_headers__empty__binds_no_client_header() -> None:
+    # Arrange
+    client = await _client_reading({})
+
+    # Act
+    response = client.get("/ctx", headers=_CLIENT_HEADERS)
+
+    # Assert
+    context = response.json()["context"]
+    assert context.keys() == {"request_id"}
+    assert UUID(context["request_id"])
+
+
+async def test__context_headers__empty__echoes_the_request_id_it_minted() -> None:
+    # Arrange
+    client = await _client_reading({})
+
+    # Act
+    response = client.get("/ctx", headers=_CLIENT_HEADERS)
+
+    # Assert
+    echoed = response.headers["x-request-id"]
+    assert echoed == response.json()["context"]["request_id"]
+    assert UUID(echoed)
 
 
 # --------------------------------------------------------------------------- #
