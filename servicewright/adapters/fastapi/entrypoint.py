@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, Any
 from ...core.contracts import ServerEntrypoint
 from .._uvicorn import UvicornRunner
 from ._imports import FastAPI
-from .config import HttpConfig, MiddlewareConfig
+from .config import HttpConfig, MetricsInstrumentatorConfig, MiddlewareConfig
 from .configurators import setup_exception_handlers, setup_health_routes, setup_middleware_stack
 from .metrics import setup_metrics_instrumentator
 from .observability import instrument_fastapi_app
@@ -71,6 +71,10 @@ class FastApiEntrypoint(ServerEntrypoint):
             localization) across every default handler.
         metrics: Expose in-app Prometheus metrics at ``/system/metrics`` via
             ``prometheus-fastapi-instrumentator`` (requires servicewright[fastapi]).
+            ``False`` installs nothing, ``True`` the default
+            ``MetricsInstrumentatorConfig``, and a config instance is used as
+            given: ``latency_lowr_buckets`` in its ``instrument_kwargs`` sets the
+            buckets of ``http_request_duration_seconds``.
         configure_app: Final hook called with ``(app, ctx)`` after wiring.
         kind: Telemetry label (default ``"http"``).
         essential: Whether the entrypoint's exit/failure stops the process.
@@ -86,7 +90,7 @@ class FastApiEntrypoint(ServerEntrypoint):
         exception_handlers: dict[type[Exception], ExceptionHandler] | None = None,
         default_exception_handlers: bool = True,
         error_renderer: HttpErrorRendererProtocol | None = None,
-        metrics: bool = False,
+        metrics: bool | MetricsInstrumentatorConfig = False,
         configure_app: ConfigureApp | None = None,
         kind: str = "http",
         essential: bool = True,
@@ -98,7 +102,12 @@ class FastApiEntrypoint(ServerEntrypoint):
         self._exception_handlers: dict[type[Exception], ExceptionHandler] = dict(exception_handlers or {})
         self._default_exception_handlers = default_exception_handlers
         self._error_renderer = error_renderer
-        self._metrics = metrics
+        if isinstance(metrics, MetricsInstrumentatorConfig):
+            self._metrics: MetricsInstrumentatorConfig | None = metrics
+        elif metrics:
+            self._metrics = MetricsInstrumentatorConfig()
+        else:
+            self._metrics = None
         self._configure_app = configure_app
         self.kind = kind
         self.essential = essential
@@ -176,8 +185,8 @@ class FastApiEntrypoint(ServerEntrypoint):
 
         await self._register_routes(app, ctx)
 
-        if self._metrics:
-            setup_metrics_instrumentator(app)
+        if self._metrics is not None:
+            setup_metrics_instrumentator(app, config=self._metrics)
 
         if self._configure_app is not None:
             self._configure_app(app, ctx)
@@ -246,7 +255,7 @@ class FastApiPlugin:
         exception_handlers: dict[type[Exception], ExceptionHandler] | None = None,
         default_exception_handlers: bool = True,
         error_renderer: HttpErrorRendererProtocol | None = None,
-        metrics: bool = False,
+        metrics: bool | MetricsInstrumentatorConfig = False,
         configure_app: ConfigureApp | None = None,
         kind: str = "http",
         essential: bool = True,

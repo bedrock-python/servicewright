@@ -10,7 +10,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import re
 import socket
+from collections.abc import Iterator
 from typing import Any, cast
 from unittest.mock import MagicMock
 
@@ -18,7 +20,7 @@ import pytest
 from deadline_budget import DeadlineExceededError
 from fastapi import APIRouter, FastAPI, HTTPException
 from fastapi.testclient import TestClient
-from prometheus_client import CollectorRegistry
+from prometheus_client import REGISTRY, CollectorRegistry
 from prometheus_fastapi_instrumentator import metrics
 
 from servicewright import (
@@ -764,6 +766,17 @@ async def test__middleware_stack__custom_middleware_configured__is_added() -> No
 # --------------------------------------------------------------------------- #
 # Metrics
 # --------------------------------------------------------------------------- #
+@pytest.fixture
+def default_registry() -> Iterator[None]:
+    # metrics=True instruments into the process-wide REGISTRY, where a second
+    # instrumented app would collide on the same series: drop what the test added.
+    registered_before = set(REGISTRY._collector_to_names)
+    yield
+    for collector in set(REGISTRY._collector_to_names) - registered_before:
+        REGISTRY.unregister(collector)
+
+
+@pytest.mark.usefixtures("default_registry")
 async def test__metrics_endpoint__enabled__is_exposed() -> None:
     ep = FastApiEntrypoint(config=HttpConfig(port=0), metrics=True)
     client = await _build_client(ep, _make_service_ctx(FakeContainer()))
@@ -811,18 +824,79 @@ def _private_registry_config(registry: CollectorRegistry, **fields: Any) -> Metr
     )
 
 
-async def _build_instrumented_client(config: MetricsInstrumentatorConfig) -> TestClient:
+def _ping_router() -> APIRouter:
     router = APIRouter()
 
     @router.get("/ping")
     async def ping() -> dict[str, str]:
         return {"pong": "ok"}
 
+    return router
+
+
+async def _build_instrumented_client(config: MetricsInstrumentatorConfig) -> TestClient:
     def configure(app: FastAPI, ctx: ServiceContext) -> None:
         setup_metrics_instrumentator(app, config=config)
 
-    ep = FastApiEntrypoint(config=HttpConfig(port=0), routers=(router,), configure_app=configure)
+    ep = FastApiEntrypoint(config=HttpConfig(port=0), routers=(_ping_router(),), configure_app=configure)
     return await _build_client(ep, _make_service_ctx(FakeContainer()))
+
+
+async def _metrics_after_one_ping(ep: FastApiEntrypoint) -> str:
+    client = await _build_client(ep, _make_service_ctx(FakeContainer()))
+    client.get("/ping")
+    return client.get("/system/metrics").text
+
+
+def _ping_latency_buckets(metrics_body: str) -> list[str]:
+    return re.findall(
+        r'^http_request_duration_seconds_bucket\{handler="/ping",le="([^"]+)",method="GET"\}',
+        metrics_body,
+        re.MULTILINE,
+    )
+
+
+@pytest.fixture
+def long_request_metrics(metrics_registry: CollectorRegistry) -> MetricsInstrumentatorConfig:
+    return _private_registry_config(metrics_registry, instrument_kwargs={"latency_lowr_buckets": (1, 60, 600)})
+
+
+async def test__metrics_endpoint__instrumentator_config_given__uses_its_latency_buckets(
+    long_request_metrics: MetricsInstrumentatorConfig,
+) -> None:
+    # Arrange
+    ep = FastApiEntrypoint(config=HttpConfig(port=0), routers=(_ping_router(),), metrics=long_request_metrics)
+
+    # Act
+    body = await _metrics_after_one_ping(ep)
+
+    # Assert
+    assert _ping_latency_buckets(body) == ["1.0", "60.0", "600.0", "+Inf"]
+
+
+async def test__fastapi_plugin__instrumentator_config_given__forwards_it_to_the_entrypoint(
+    long_request_metrics: MetricsInstrumentatorConfig,
+) -> None:
+    # Arrange
+    plugin = FastApiPlugin(config=HttpConfig(port=0), routers=(_ping_router(),), metrics=long_request_metrics)
+
+    # Act
+    body = await _metrics_after_one_ping(plugin.entrypoint)
+
+    # Assert
+    assert _ping_latency_buckets(body) == ["1.0", "60.0", "600.0", "+Inf"]
+
+
+@pytest.mark.usefixtures("default_registry")
+async def test__metrics_endpoint__enabled__keeps_the_default_latency_buckets() -> None:
+    # Arrange
+    ep = FastApiEntrypoint(config=HttpConfig(port=0), routers=(_ping_router(),), metrics=True)
+
+    # Act
+    body = await _metrics_after_one_ping(ep)
+
+    # Assert
+    assert _ping_latency_buckets(body) == ["0.1", "0.5", "1.0", "+Inf"]
 
 
 async def test__metrics_instrumentator__instrumentations_configured__emit_their_series(
