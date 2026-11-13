@@ -327,7 +327,12 @@ Entrypoint constructors, all keyword-only:
 
 * `FastApiEntrypoint(config=None, routers=(), routes_registerer=None, middlewares=None,
   exception_handlers=None, default_exception_handlers=True, error_renderer=None,
-  metrics=False, configure_app=None, kind="http", essential=True)`. `HttpConfig` defaults:
+  metrics=False, configure_app=None, kind="http", essential=True)`. `metrics` is a `bool` or a
+  `MetricsInstrumentatorConfig`: `True` installs the instrumentator with its defaults, a config
+  installs it with that config at the same place. Latency buckets go in the config's
+  `instrument_kwargs`: `latency_lowr_buckets` for `http_request_duration_seconds` (default
+  0.1, 0.5 and 1 s), `latency_highr_buckets` for `http_request_duration_highr_seconds`
+  (default up to 60 s). `HttpConfig` defaults:
   `host="0.0.0.0"`, `port=8000`, `graceful_timeout=30.0`, probes at
   `/system/health/livez` and `/system/health/readyz`, docs at `/system/docs`,
   `redirect_slashes=False`. `MiddlewareConfig` defaults have unit scope, context, sentry,
@@ -467,7 +472,8 @@ Each `*Plugin` takes exactly the same arguments as its entrypoint and exposes `.
     distribution, incompatible majors; the only public difference is `coalesce` (`bool` in
     3.x, `CoalescePolicy` in 4.x).
 19. **The FastAPI `metrics=` flag and `settings.metrics.enabled` are different things.**
-    `FastApiEntrypoint(metrics=True)` adds the in-app `/system/metrics` route;
+    `FastApiEntrypoint(metrics=True)`, or a `MetricsInstrumentatorConfig` in its place, adds the
+    in-app `/system/metrics` route;
     `settings.metrics.enabled` starts the sink's own standalone exposition server on its own
     port. Neither implies the other. `MetricsSettings` rejects `port=0` unless
     `allow_ephemeral_port=True`: the sink has no bound-port readback, so an ephemeral

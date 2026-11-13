@@ -234,7 +234,8 @@ Also check `settings.tracing.excluded_urls` and remember that `/system/*` is exc
 
 ### Metrics endpoint returns 404
 
-`FastApiEntrypoint(metrics=True)` exposes `/system/metrics`. The standalone server on
+`FastApiEntrypoint(metrics=True)`, or `metrics=MetricsInstrumentatorConfig(...)`, exposes
+`/system/metrics`; `metrics=False`, the default, does not. The standalone server on
 `settings.metrics.port` is a *different* endpoint, enabled by `settings.metrics.enabled`. A
 socket-less worker needs the second one.
 

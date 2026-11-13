@@ -34,7 +34,7 @@ Everything operational lives under one prefix, so it is trivial to keep off your
 | --- | --- |
 | `/system/health/livez` | liveness probe |
 | `/system/health/readyz` | readiness probe (503 when unhealthy) |
-| `/system/metrics` | in-app Prometheus metrics (when `metrics=True`) |
+| `/system/metrics` | in-app Prometheus metrics (when `metrics` is `True` or a config) |
 | `/system/docs` | Swagger UI |
 | `/system/redoc` | ReDoc |
 | `/system/openapi.json` | the schema |
@@ -68,7 +68,7 @@ FastApiEntrypoint(
 | `exception_handlers` | `{ExceptionType: handler}`, appended after the defaults. |
 | `default_exception_handlers` | Install the built-in handlers. |
 | `error_renderer` | Wire-format renderer; `None` means RFC 9457. See [Errors](../concepts/errors.md#own-the-wire-format). |
-| `metrics` | Expose in-app request metrics at `/system/metrics`. |
+| `metrics` | Expose in-app request metrics at `/system/metrics`: `True` with the defaults, or a `MetricsInstrumentatorConfig` to tune them. See [Metrics](#metrics). |
 | `configure_app` | `(app, ctx) -> None`, the final hook after everything is wired. |
 | `kind`, `essential` | Telemetry label and failure semantics. See [Entrypoints](../concepts/entrypoints.md#kind-and-essential). |
 
@@ -370,21 +370,32 @@ This is independent of the standalone exposition server that the
 [Prometheus backend](observability-backends.md#prometheus-metrics) starts when
 `settings.metrics.enabled` is true. Both write into the same registry.
 
-To tune the instrumentator, wire it yourself:
+To tune the instrumentator, pass a `MetricsInstrumentatorConfig` instead of `True`. The
+instrumentator then sits at the same place in the middleware stack as with `True`.
+
+The default latency buckets suit fast APIs. `http_request_duration_seconds`, the histogram
+labelled by handler and method, stops at 1 second, and `http_request_duration_highr_seconds`,
+which has no labels, at 60 seconds. LLM calls, long polls and SSE streams then all land in
+`+Inf`. Set your own buckets through `instrument_kwargs`:
 
 ```python
-from servicewright.adapters.fastapi import MetricsInstrumentatorConfig, setup_metrics_instrumentator
+from servicewright.adapters.fastapi import MetricsInstrumentatorConfig
 
-
-def configure_app(app, ctx) -> None:
-    setup_metrics_instrumentator(
-        app,
-        config=MetricsInstrumentatorConfig(init_kwargs={"should_group_status_codes": False}),
-    )
-
-
-FastApiEntrypoint(metrics=False, configure_app=configure_app)
+FastApiEntrypoint(
+    metrics=MetricsInstrumentatorConfig(
+        instrument_kwargs={
+            "latency_lowr_buckets": (0.1, 0.5, 1, 5, 30, 120, 600),
+            "latency_highr_buckets": (0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600),
+        },
+    ),
+)
 ```
+
+`latency_lowr_buckets` are the buckets of `http_request_duration_seconds` and
+`latency_highr_buckets` those of `http_request_duration_highr_seconds`; `+Inf` is added to both.
+Keep the first list short, since every bucket is repeated for each handler and method. Both only
+shape the default set of metrics: with `instrumentations` given, pass `buckets=` to
+`metrics.latency()` instead.
 
 `MetricsInstrumentatorConfig` is a pass-through, one field per call the wrapper makes: `init_kwargs`
 to `Instrumentator(...)`, `instrumentations` to `.add(...)`, `instrument_kwargs` to
