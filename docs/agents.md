@@ -338,8 +338,8 @@ Entrypoint constructors, all keyword-only:
   `redirect_slashes=False`. `MiddlewareConfig` defaults have unit scope, context, sentry,
   processing time, logging, correlation id, gzip and CORS all on.
   `MiddlewareConfig.context_headers: dict[str, str] | None = None` is `{header: context_key}`
-  for `ContextMiddleware`: `None` reads `x-request-id`, `x-user-id`, `x-tenant-id` and
-  `x-trace-id`, `{}` reads none and always mints the request id (rule 21).
+  for `ContextMiddleware`: `None` reads the `correlation_id.header_name` header (`x-request-id`
+  by default), `x-user-id`, `x-tenant-id` and `x-trace-id`, `{}` reads none and always mints the request id (rule 21).
   `HttpServerSettings` is `HttpConfig` as a settings model — a plain pydantic `BaseModel` the
   adapter exports; nest it as `server: HttpServerSettings = HttpServerSettings()` in your
   settings class and it is `SERVER__*` in the environment. Same fields and defaults, `health` and

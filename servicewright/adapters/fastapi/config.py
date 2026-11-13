@@ -80,11 +80,14 @@ class GZipMiddlewareConfig:
 
 @dataclass(slots=True)
 class CorrelationIdMiddlewareConfig:
-    """How the request id is returned to the client.
+    """Which header carries the request id, in and out, and whether it is echoed.
 
     The id itself is owned by :class:`ContextMiddleware` — the same value that
     lands in the context store, the logs and outbound propagation. Echoing it
     is what lets a caller quote an id that actually appears in your logs.
+    ``header_name`` is the header the id is read from and echoed in. A
+    ``MiddlewareConfig.context_headers`` mapping replaces the default headers,
+    so with both set, the mapping has to name this header too.
     """
 
     enabled: bool = True
@@ -120,7 +123,8 @@ class MiddlewareConfig:
     context_headers: dict[str, str] | None = None
     """Request headers ``ContextMiddleware`` binds, as ``{header: context_key}``.
 
-    ``None`` reads ``x-request-id``, ``x-user-id``, ``x-tenant-id`` and
+    ``None`` reads the request id header (``correlation_id.header_name``,
+    ``x-request-id`` by default), ``x-user-id``, ``x-tenant-id`` and
     ``x-trace-id``. They are client input, and they reach every log line, the
     Sentry scope and outbound propagation, so on a port untrusted clients reach
     pass ``{"x-request-id": "request_id"}``. ``{}`` reads no header, and the

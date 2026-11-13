@@ -59,9 +59,12 @@ class ContextMiddleware:
     ) -> None:
         self.app = app
         self.echo_request_id = echo_request_id
+        self.request_id_header = request_id_header.lower()
+        self.request_id_context_key = request_id_context_key
         if header_extractors is None:
+            # The request id is read from the header it is echoed in.
             header_extractors = {
-                "x-request-id": "request_id",
+                self.request_id_header: request_id_context_key,
                 "x-user-id": "user_id",
                 "x-tenant-id": "tenant_id",
                 "x-trace-id": "trace_id",
@@ -70,8 +73,6 @@ class ContextMiddleware:
         self.cookie_extractors = cookie_extractors or {}
         self.custom_extractors = custom_extractors or []
         self.auto_generate_request_id = auto_generate_request_id
-        self.request_id_header = request_id_header.lower()
-        self.request_id_context_key = request_id_context_key
         self.context_setters = context_setters or []
         # Header/cookie values are client input bound into logs and outbound
         # propagation — drop log-unsafe or overlong ones (a dropped request id

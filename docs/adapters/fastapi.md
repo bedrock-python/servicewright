@@ -327,7 +327,7 @@ flowchart TD
 generates one otherwise, binds it into the [context store](../concepts/context.md) and returns it
 in the response header.
 
-Change the header name, or stop echoing:
+Change the header it is read from and echoed in, or stop echoing:
 
 ```python
 from servicewright.adapters.fastapi import CorrelationIdMiddlewareConfig
@@ -335,6 +335,10 @@ from servicewright.adapters.fastapi import CorrelationIdMiddlewareConfig
 MiddlewareConfig(correlation_id=CorrelationIdMiddlewareConfig(header_name="X-Correlation-ID"))
 MiddlewareConfig(correlation_id=CorrelationIdMiddlewareConfig(enabled=False))   # bind, do not echo
 ```
+
+Up to 0.14.1 `header_name` changed only the response header, and the id was still read from
+`X-Request-ID`. A `context_headers` mapping (below) replaces the default headers, so when you
+set both, name the request id header in the mapping too.
 
 ### Which request headers are read
 
