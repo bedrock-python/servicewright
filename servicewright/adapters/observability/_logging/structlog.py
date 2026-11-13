@@ -11,7 +11,7 @@ event dict, after that merge.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TextIO
 
 from ..base import LoggingSink
 
@@ -21,16 +21,39 @@ except ImportError as exc:  # pragma: no cover - exercised only without the extr
     raise ImportError("structlog logging requires servicewright[observability]; install it.") from exc
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from ....core.contracts.observability import Redactor
     from ....core.observability.config import ObsSetupContext
 
 
 class StructlogLoggingSink(LoggingSink):
-    """structlog backend driven by ``settings.logging`` (level, JSON or console)."""
+    """structlog backend driven by ``settings.logging`` (level, JSON or console).
+
+    Args:
+        event_key: Key that holds a line's text in JSON output, for a log pipeline that reads
+            it from somewhere other than ``event`` (``"message"`` for ELK). ``None`` (the
+            default) takes ``settings.logging.event_key``, and ``"event"`` when the section has
+            no such field. Console output always keeps ``event``, which is what the console
+            renderer reads. The text replaces a field of the same name on the line.
+        extra_processors: structlog processors run on every line, structlog-native and stdlib
+            alike, after ``ExtraAdder`` and before the redactor, so whatever they add is
+            redacted like the rest of the payload.
+        stream: Where the lines are written. ``None`` (the default) is stderr.
+    """
 
     backend = "structlog"
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        event_key: str | None = None,
+        extra_processors: Sequence[structlog.typing.Processor] = (),
+        stream: TextIO | None = None,
+    ) -> None:
+        self._event_key = event_key
+        self._extra_processors = tuple(extra_processors)
+        self._stream = stream
         self._handler: logging.Handler | None = None
 
     def setup(self, ctx: ObsSetupContext) -> None:
@@ -41,6 +64,7 @@ class StructlogLoggingSink(LoggingSink):
 
         level = _coerce_level(getattr(logging_settings, "level", "INFO"))
         use_json = bool(getattr(logging_settings, "use_json", True))
+        event_key = self._event_key if self._event_key is not None else getattr(logging_settings, "event_key", "event")
 
         shared_processors: list[Any] = [
             structlog.contextvars.merge_contextvars,
@@ -52,9 +76,10 @@ class StructlogLoggingSink(LoggingSink):
             # — the FastAPI access log's method/path/status, a failing warmer's name — since those
             # are all emitted as ``logger.info(..., extra={...})``.
             structlog.stdlib.ExtraAdder(),
+            *self._extra_processors,
         ]
-        # After ExtraAdder on purpose: a recovered field is payload like any other and must face
-        # the redactor, or a secret passed through ``extra`` would bypass it.
+        # After ExtraAdder and the caller's processors on purpose: a recovered or added field is payload
+        # like any other and must face the redactor, or a secret passed through ``extra`` would bypass it.
         if ctx.redactor is not None:
             shared_processors.append(_redaction_processor(ctx.redactor))
         shared_processors.extend(
@@ -65,6 +90,9 @@ class StructlogLoggingSink(LoggingSink):
         )
 
         renderer = structlog.processors.JSONRenderer() if use_json else structlog.dev.ConsoleRenderer()
+        # JSON only, since ConsoleRenderer reads ``event``; and right before the renderer, since the
+        # processors ahead of it may read ``event`` too.
+        rename = [structlog.processors.EventRenamer(event_key)] if use_json and event_key != "event" else []
 
         structlog.configure(
             processors=[*shared_processors, structlog.stdlib.ProcessorFormatter.wrap_for_formatter],
@@ -74,10 +102,10 @@ class StructlogLoggingSink(LoggingSink):
         )
 
         formatter = structlog.stdlib.ProcessorFormatter(
-            processors=[structlog.stdlib.ProcessorFormatter.remove_processors_meta, renderer],
+            processors=[structlog.stdlib.ProcessorFormatter.remove_processors_meta, *rename, renderer],
             foreign_pre_chain=shared_processors,
         )
-        handler = logging.StreamHandler()
+        handler = logging.StreamHandler(self._stream)
         handler.setFormatter(formatter)
 
         root = logging.getLogger()

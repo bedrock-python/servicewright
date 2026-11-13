@@ -164,6 +164,11 @@ adapter's own request logs. Those go *through* the standard library logger, not 
 With the logging concern switched off, the root logger is left untouched and request lines follow
 whatever your application configured.
 
+The structlog sink writes the text of a line under `event`. For a pipeline that reads it from
+`message`, as ELK does, set `LOGGING__EVENT_KEY=message`. The sink's constructor also takes extra
+structlog processors, which run before the redactor, and the stream to write to, stderr by
+default. See [structlog](../adapters/observability-backends.md#event-key-extra-processors-stream).
+
 Correlation is automatic: the transports bind `request_id` / `user_id` / `tenant_id` / `trace_id`
 into the [context store](context.md) and push them into structlog contextvars and OTel Baggage.
 

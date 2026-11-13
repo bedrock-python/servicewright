@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import io
 import json
 import logging
+import re
+from collections.abc import Callable
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+import structlog
 from prometheus_client import CollectorRegistry
+from structlog.typing import EventDict, WrappedLogger
 
 from servicewright.adapters.observability._errors import sentry as sentry_mod
 from servicewright.adapters.observability._errors.sentry import SentryErrorTrackingSink, SentryReporter
@@ -23,7 +28,14 @@ from servicewright.adapters.observability._metrics.prometheus import (
 )
 from servicewright.adapters.observability._tracing import otel as otel_mod
 from servicewright.adapters.observability._tracing.otel import OtelTracingSink
-from servicewright.core.observability import KeyRedactor, ObsSetupContext, make_metric_name
+from servicewright.adapters.settings import BaseServiceSettings, LoggingSettings
+from servicewright.core.observability import (
+    KeyRedactor,
+    ObsConfig,
+    ObservabilityManager,
+    ObsSetupContext,
+    make_metric_name,
+)
 from servicewright.testing import FakeSettings
 
 pytestmark = pytest.mark.unit
@@ -83,6 +95,12 @@ def _settings_with(**sections: Any) -> FakeSettings:
 def _json_line(captured: str, *, event: str) -> dict[str, Any]:
     lines = [json.loads(line) for line in captured.strip().splitlines() if line.startswith("{")]
     return next(line for line in lines if line["event"] == event)
+
+
+def _json_line_carrying(captured: str, text: str) -> dict[str, Any]:
+    """The JSON line holding ``text`` under any key, for when the key itself is under test."""
+    lines = [json.loads(line) for line in captured.strip().splitlines() if line.startswith("{")]
+    return next(line for line in lines if text in line.values())
 
 
 # --------------------------------------------------------------------------- #
@@ -501,8 +519,6 @@ def test__stdlib_logging_sink_setup__no_logging_settings__does_nothing() -> None
 
 
 def test__structlog_logging_sink__json_enabled__emits_redacted_json_lines(capsys: pytest.CaptureFixture[str]) -> None:
-    import structlog
-
     sink = StructlogLoggingSink()
     sink.setup(_ctx(_settings_with(logging=_LoggingSettings("INFO", use_json=True)), redactor=KeyRedactor()))
     try:
@@ -561,6 +577,137 @@ def test__structlog_logging_sink_shutdown__called__restores_the_root_logger() ->
     assert len(logging.getLogger().handlers) == len(before) + 1
     sink.shutdown()
     assert logging.getLogger().handlers == before
+
+
+def _log_through_structlog(text: str) -> None:
+    structlog.get_logger("test.structlog").info(text)
+
+
+def _log_through_stdlib(text: str) -> None:
+    logging.getLogger("test.foreign").info(text)
+
+
+@pytest.fixture(params=[_log_through_structlog, _log_through_stdlib], ids=["structlog", "stdlib"])
+def log_line(request: pytest.FixtureRequest) -> Callable[[str], None]:
+    """Emit one INFO line through structlog or through plain ``logging``: the sink renders both."""
+    emit: Callable[[str], None] = request.param
+    return emit
+
+
+def _add_api_key(logger: WrappedLogger, method_name: str, event_dict: EventDict) -> EventDict:
+    event_dict["api_key"] = "s3cret"
+    return event_dict
+
+
+def test__structlog_logging_sink__defaults__render_the_text_under_event(
+    capsys: pytest.CaptureFixture[str], log_line: Callable[[str], None]
+) -> None:
+    # Arrange: a section of its own without event_key, so the sink falls back
+    sink = StructlogLoggingSink()
+    sink.setup(_ctx(_settings_with(logging=_LoggingSettings())))
+
+    # Act
+    try:
+        log_line("Order placed")
+    finally:
+        sink.shutdown()
+
+    # Assert
+    assert _json_line_carrying(capsys.readouterr().err, "Order placed")["event"] == "Order placed"
+
+
+def test__structlog_logging_sink__event_key_from_the_environment__renders_the_text_under_that_key(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], log_line: Callable[[str], None]
+) -> None:
+    # Arrange
+    monkeypatch.setenv("LOGGING__EVENT_KEY", "message")
+    manager = ObservabilityManager(ObsConfig(logging="structlog", metrics=None, tracing=None, error_tracking=None))
+    manager.configure(BaseServiceSettings(), service_name="svc")
+
+    # Act
+    try:
+        log_line("Order placed")
+    finally:
+        manager.shutdown()
+
+    # Assert
+    payload = _json_line_carrying(capsys.readouterr().err, "Order placed")
+    assert payload.get("message") == "Order placed"
+    assert "event" not in payload
+
+
+def test__structlog_logging_sink__event_key_argument_and_setting__the_argument_wins(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Arrange
+    sink = StructlogLoggingSink(event_key="msg")
+    sink.setup(_ctx(_settings_with(logging=LoggingSettings(event_key="message"))))
+
+    # Act
+    try:
+        structlog.get_logger("test.structlog").info("Order placed")
+    finally:
+        sink.shutdown()
+
+    # Assert
+    payload = _json_line_carrying(capsys.readouterr().err, "Order placed")
+    assert payload.get("msg") == "Order placed"
+    assert "message" not in payload
+
+
+def test__structlog_logging_sink__console_output_with_event_key__keeps_the_text_in_the_event_column(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Arrange
+    sink = StructlogLoggingSink(event_key="message")
+    sink.setup(_ctx(_settings_with(logging=LoggingSettings(use_json=False))))
+
+    # Act
+    try:
+        structlog.get_logger("test.console").info("Order placed")
+    finally:
+        sink.shutdown()
+
+    # Assert: renamed, ConsoleRenderer would leave the column empty and print message='Order placed'
+    line = re.sub(r"\x1b\[[0-9;]*m", "", capsys.readouterr().err).strip().splitlines()[-1]
+    assert "Order placed" in line
+    assert "message=" not in line
+
+
+def test__structlog_logging_sink__extra_processor_adds_a_sensitive_field__the_redactor_masks_it(
+    capsys: pytest.CaptureFixture[str], log_line: Callable[[str], None]
+) -> None:
+    # Arrange
+    sink = StructlogLoggingSink(extra_processors=[_add_api_key])
+    sink.setup(_ctx(_settings_with(logging=LoggingSettings()), redactor=KeyRedactor()))
+
+    # Act
+    try:
+        log_line("Order placed")
+    finally:
+        sink.shutdown()
+
+    # Assert
+    assert _json_line(capsys.readouterr().err, event="Order placed")["api_key"] == "[REDACTED]"
+
+
+def test__structlog_logging_sink__stream_given__writes_the_lines_there_instead_of_stderr(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Arrange
+    stream = io.StringIO()
+    sink = StructlogLoggingSink(stream=stream)
+    sink.setup(_ctx(_settings_with(logging=LoggingSettings())))
+
+    # Act
+    try:
+        structlog.get_logger("test.stream").info("Order placed")
+    finally:
+        sink.shutdown()
+
+    # Assert
+    assert _json_line(stream.getvalue(), event="Order placed")["logger"] == "test.stream"
+    assert "Order placed" not in capsys.readouterr().err
 
 
 # --------------------------------------------------------------------------- #

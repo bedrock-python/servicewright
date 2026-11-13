@@ -216,10 +216,11 @@ def test__logging_settings__unknown_level__is_rejected_at_load() -> None:
         (ErrorTrackingSettings, "traces_sample_rate", 2.0),
         (ErrorTrackingSettings, "profiles_sample_rate", -1.0),
         (MetricsSettings, "port", 70000),
+        (LoggingSettings, "event_key", ""),
     ],
 )
 def test__section_models__value_outside_what_the_backend_accepts__is_rejected_at_load(
-    model: type[Any], field: str, value: float
+    model: type[Any], field: str, value: object
 ) -> None:
     with pytest.raises(ValidationError, match=field):
         model(**{field: value})

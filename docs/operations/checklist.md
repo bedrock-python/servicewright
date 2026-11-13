@@ -104,7 +104,8 @@ to a failure someone has already had.
       below `1` will show up as latency.
 - [ ] The image runs as a non-root user.
 - [ ] API and worker are separate deployments built from the same spec, if they scale differently.
-- [ ] Logs go to stdout as JSON and the collector parses them.
+- [ ] Logs go out as JSON (to stderr by default) and the collector parses them, the key of the text
+      included (`LOGGING__EVENT_KEY`).
 
 ## Before the first real traffic
 
