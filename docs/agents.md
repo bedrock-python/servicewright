@@ -332,6 +332,9 @@ Entrypoint constructors, all keyword-only:
   `/system/health/livez` and `/system/health/readyz`, docs at `/system/docs`,
   `redirect_slashes=False`. `MiddlewareConfig` defaults have unit scope, context, sentry,
   processing time, logging, correlation id, gzip and CORS all on.
+  `MiddlewareConfig.context_headers: dict[str, str] | None = None` is `{header: context_key}`
+  for `ContextMiddleware`: `None` reads `x-request-id`, `x-user-id`, `x-tenant-id` and
+  `x-trace-id`, `{}` reads none and always mints the request id (rule 21).
   `HttpServerSettings` is `HttpConfig` as a settings model — a plain pydantic `BaseModel` the
   adapter exports; nest it as `server: HttpServerSettings = HttpServerSettings()` in your
   settings class and it is `SERVER__*` in the environment. Same fields and defaults, `health` and
@@ -477,6 +480,14 @@ Each `*Plugin` takes exactly the same arguments as its entrypoint and exposes `.
     `min(host drain_grace_seconds, its own cap)`: `GrpcConfig.grace_period` for gRPC,
     `graceful_timeout` for FastAPI and Litestar (`0` there sets no cap). Both caps default to
     30.0, the default grace; raising `drain_grace_seconds` above that needs the cap raised too.
+21. **The FastAPI context headers are client input.** By default `x-user-id`, `x-tenant-id`
+    and `x-trace-id` are bound from any request into the logs, the Sentry user and tags, and
+    `propagation_metadata()`, which forwards them downstream. `is_safe_context_id` checks the
+    characters, not the sender. Behind an edge that strips or sets them this is fine; on a port
+    untrusted clients reach, pass
+    `MiddlewareConfig(context_headers={"x-request-id": "request_id"})`, or set
+    `SERVER__MIDDLEWARES__CONTEXT_HEADERS='{"x-request-id":"request_id"}'`. The gRPC
+    interceptor reads the same metadata keys and has no such setting.
 
 ## Common mistakes
 

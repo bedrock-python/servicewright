@@ -267,6 +267,7 @@ def test__middleware_settings__every_field_set__carries_across_and_the_keywords_
         context=False,
         sentry=False,
         processing_time=False,
+        context_headers={"x-request-id": "request_id"},
         logging=LoggingMiddlewareSettings(enabled=False, ignored_paths=["/internal"]),
         correlation_id=CorrelationIdMiddlewareSettings(enabled=False, header_name="X-Correlation-ID"),
         gzip=GZipMiddlewareSettings(enabled=False, minimum_size=1),
@@ -289,6 +290,7 @@ def test__middleware_settings__every_field_set__carries_across_and_the_keywords_
         sentry=False,
         processing_time=False,
         context_setters=setters,
+        context_headers={"x-request-id": "request_id"},
         logging=LoggingMiddlewareConfig(enabled=False, ignored_paths=["/internal"]),
         correlation_id=CorrelationIdMiddlewareConfig(enabled=False, header_name="X-Correlation-ID"),
         gzip=GZipMiddlewareConfig(enabled=False, minimum_size=1),
@@ -306,15 +308,19 @@ def test__middleware_settings__every_field_set__carries_across_and_the_keywords_
 
 
 def test__to_config__called_twice__shares_no_dict_or_list_between_the_configs() -> None:
-    server = HttpServerSettings(fastapi_kwargs={"debug": True})
+    server = HttpServerSettings(
+        fastapi_kwargs={"debug": True}, middlewares=MiddlewareSettings(context_headers={"x-request-id": "request_id"})
+    )
     first, second = server.to_config(), server.to_config()
     first.fastapi_kwargs["lifespan"] = object()
     first.uvicorn_kwargs["ws_max_size"] = 1
     server.middlewares.to_config().cors.allow_origins.append("https://leak.example.com")
+    server.middlewares.to_config().context_headers["x-user-id"] = "user_id"  # type: ignore[index]
 
     assert second.fastapi_kwargs == {"debug": True}
     assert second.uvicorn_kwargs == {}
     assert server.middlewares.to_config().cors.allow_origins == []
+    assert server.middlewares.to_config().context_headers == {"x-request-id": "request_id"}
 
 
 # --------------------------------------------------------------------------- #
@@ -422,6 +428,24 @@ def test__base_service_settings__server_port_zero_from_environment__behaves_as_k
 
     monkeypatch.setenv("SERVER__ALLOW_EPHEMERAL_PORT", "true")
     assert _Settings().server.port == 0
+
+
+@pytest.mark.parametrize(
+    ("variable", "expected"),
+    [('{"x-request-id":"request_id"}', {"x-request-id": "request_id"}), ("{}", {})],
+    ids=["request-id-only", "empty"],
+)
+def test__base_service_settings__context_headers_variable__reaches_the_middleware_config_as_given(
+    monkeypatch: pytest.MonkeyPatch, variable: str, expected: dict[str, str]
+) -> None:
+    # Arrange
+    monkeypatch.setenv("SERVER__MIDDLEWARES__CONTEXT_HEADERS", variable)
+
+    # Act
+    middlewares = _Settings().server.middlewares.to_config()
+
+    # Assert
+    assert middlewares.context_headers == expected
 
 
 def test__cors_middleware_settings__credentials_with_wildcard_origin__rejected_at_load_with_the_field_path() -> None:

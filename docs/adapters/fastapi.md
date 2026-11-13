@@ -123,6 +123,7 @@ SERVER__UVICORN__TIMEOUT_KEEP_ALIVE=30
 SERVER__UVICORN__FORWARDED_ALLOW_IPS=*
 SERVER__MIDDLEWARES__GZIP__ENABLED=false
 SERVER__MIDDLEWARES__CORS__ALLOW_ORIGINS='["https://app.example.com"]'
+SERVER__MIDDLEWARES__CONTEXT_HEADERS='{"x-request-id":"request_id"}'
 ```
 
 Every model is a plain `BaseModel`, never a `BaseSettings`, so the only way into `server.port` is
@@ -279,6 +280,7 @@ middlewares = MiddlewareConfig(
     sentry=True,
     processing_time=True,
     context_setters=None,
+    context_headers=None,
     logging=LoggingMiddlewareConfig(enabled=True, ignored_paths=["/system/health/livez"]),
     gzip=GZipMiddlewareConfig(enabled=True, minimum_size=1000),
     cors=CORSMiddlewareConfig(allow_origins=["https://app.example.com"]),
@@ -333,6 +335,21 @@ from servicewright.adapters.fastapi import CorrelationIdMiddlewareConfig
 MiddlewareConfig(correlation_id=CorrelationIdMiddlewareConfig(header_name="X-Correlation-ID"))
 MiddlewareConfig(correlation_id=CorrelationIdMiddlewareConfig(enabled=False))   # bind, do not echo
 ```
+
+### Which request headers are read
+
+By default `ContextMiddleware` binds `X-Request-ID`, `X-User-Id`, `X-Tenant-Id` and `X-Trace-Id`
+from every request. They are client input, and they reach the logs, the Sentry scope and outbound
+propagation. That is fine behind an edge that strips or sets them. On a port that untrusted
+clients reach, read only the request id:
+
+```python
+MiddlewareConfig(context_headers={"x-request-id": "request_id"})   # {header: context_key}
+MiddlewareConfig(context_headers={})                               # no header; the id is always minted
+```
+
+`None`, the default, keeps the four. See
+[Request context](../concepts/context.md#the-identity-headers-are-client-input) for the trust model.
 
 ## Error handling
 

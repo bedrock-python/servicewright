@@ -75,6 +75,29 @@ is_safe_context_id("a\nb: injected")    # False
 
 A rejected value is dropped and a fresh id is generated instead.
 
+### The identity headers are client input
+
+The validation checks the characters, not who sent them. Any caller can send `X-User-Id: admin`,
+and by default that value lands in every log line, on the Sentry user and tags, and, through
+`propagation_metadata()`, in the headers your service sends downstream, which may trust it.
+
+That is fine behind an edge, such as a gateway or a mesh, that strips these headers or sets them
+itself. On a port that untrusted clients reach, read only the request id:
+
+```python
+from servicewright.adapters.fastapi import FastApiEntrypoint, MiddlewareConfig
+
+FastApiEntrypoint(middlewares=MiddlewareConfig(context_headers={"x-request-id": "request_id"}))
+```
+
+```bash
+SERVER__MIDDLEWARES__CONTEXT_HEADERS='{"x-request-id":"request_id"}'
+```
+
+`context_headers` maps a request header to the context key it binds. `None`, the default, reads
+the four headers in the table above. `{}` reads none, so the service always mints the request id.
+The gRPC interceptor reads the same four metadata keys and has no such setting.
+
 ## Writing
 
 For your own keys, or in code that has no transport:

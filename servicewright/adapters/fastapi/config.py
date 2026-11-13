@@ -117,6 +117,15 @@ class MiddlewareConfig:
     # OTel baggage when opentelemetry is installed); pass your own
     # ContextSetter list to replace them.
     context_setters: list[Any] | None = None
+    context_headers: dict[str, str] | None = None
+    """Request headers ``ContextMiddleware`` binds, as ``{header: context_key}``.
+
+    ``None`` reads ``x-request-id``, ``x-user-id``, ``x-tenant-id`` and
+    ``x-trace-id``. They are client input, and they reach every log line, the
+    Sentry scope and outbound propagation, so on a port untrusted clients reach
+    pass ``{"x-request-id": "request_id"}``. ``{}`` reads no header, and the
+    request id is then always minted by the service.
+    """
 
     # Complex middlewares.
     logging: LoggingMiddlewareConfig = field(default_factory=LoggingMiddlewareConfig)
