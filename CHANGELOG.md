@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.15.0](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.14.1...servicewright-v0.15.0) (2026-11-13)
+
+
+### Features
+
+* **fastapi:** accept a MetricsInstrumentatorConfig as the entrypoint's metrics argument ([#113](https://github.com/bedrock-python/servicewright/issues/113)) ([c74a507](https://github.com/bedrock-python/servicewright/commit/c74a5079107f6793d00e6219ee714f403d1caccb))
+* **fastapi:** choose which request headers ContextMiddleware reads ([#115](https://github.com/bedrock-python/servicewright/issues/115)) ([61cb3eb](https://github.com/bedrock-python/servicewright/commit/61cb3eb809134ae2abe54f66a8b01520952894e3))
+* **grpc:** choose which metadata keys bind the request context ([#118](https://github.com/bedrock-python/servicewright/issues/118)) ([2948c13](https://github.com/bedrock-python/servicewright/commit/2948c137de430b08e44b6e8cbbfcfcc5434119ce))
+* **observability:** let the structlog sink rename the event key, add processors and pick the stream ([#114](https://github.com/bedrock-python/servicewright/issues/114)) ([665b758](https://github.com/bedrock-python/servicewright/commit/665b75877d54e05e4f6b00f5c2fce179224ccf43))
+
+
+### Bug Fixes
+
+* **fastapi:** read the request id from the header it is echoed in ([#117](https://github.com/bedrock-python/servicewright/issues/117)) ([acc3254](https://github.com/bedrock-python/servicewright/commit/acc3254897c4b4842e320861f41364758f6ffad5))
+
 ## [0.14.1](https://github.com/bedrock-python/servicewright/compare/servicewright-v0.14.0...servicewright-v0.14.1) (2026-11-09)
 
 
